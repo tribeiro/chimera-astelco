@@ -1,20 +1,16 @@
-chimera_template plugin
+chimera_astelco plugin
 =======================
 
-This is a template plugin for the chimera observatory control system
+ASTELCO telescopes drivers for the chimera observatory control system
 https://github.com/astroufsc/chimera.
 
 Usage
 -----
 
-Rename chimera_template for your plugin name. It is important that the plugin
-name must start with chimera\_ to be found by chimera. Instruments and
-controllers must follow the standard ``chimera_(plugin_name)/(instruments|controllers)/(plugin).py``
-
-The class inside ``(plugin).py`` should be named Plugin (with CamelCase letters).
-
-For more info: https://github.com/astroufsc/chimera/blob/master/docs/site/chimerafordevs.rst#chimera-objects
-
+The ASTELCO drivers come with a new type of instrument, TPL, which is responsible for the communication with the
+TSI system. In order for the drivers to work at least TPL instrument must be defined. The user may either use one
+TPL for all instruments or a TPL for each instrument (see furthermore how to configure them). The later may be usefull
+to avoid the single point of failure, though experience shows that when one fails, all fails.
 
 Installation
 ------------
@@ -23,13 +19,13 @@ Installation instructions. Dependencies, etc...
 
 ::
 
-   pip install -U chimera_template
+   pip install -U chimera_astelco
 
 or
 
 ::
 
-    pip install -U git+https://github.com/astroufsc/chimera_template.git
+    pip install -U git+https://github.com/astroufsc/chimera_astelco.git
 
 
 Configuration Example
@@ -40,17 +36,37 @@ Here goes an example of the configuration to be added on ``chimera.config`` file
 ::
 
     instrument:
-        name: model
-        type: Example
+        name: TPLConn01
+        type: TPL
+        user: admin
+        password: admin
+        tpl_host: 127.0.0.1 # Host IP
+        tpl_port: 65432 # Host port
+
+    instrument:
+        name: TPLConn02
+        type: TPL
+        user: admin
+        password: admin
+        tpl_host: 127.0.0.1 # Host IP
+        tpl_port: 65432 # Host port
+
+    instrument:
+        name: MyTelescope
+        type: Astelco
+        tpl: /TPL/TPLConn01
+
+    instrument:
+        name: MyFocuser
+        type: AstelcoFocuser
+        tpl: /TPL/TPLConn01 # uses same TPL as the telescope
+
+    instrument:
+        name: MyDome
+        type: AstelcoDome
+        tpl: /TPL/TPLConn02 # uses a different TPL
 
 
-Tested Hardware (for instruments)
----------------------------------
-
-This plugin was tested on these hardware:
-
-* Hardware example 1, model 2
-* Hardware example 2, model 3
 
 
 Contact
