@@ -21,6 +21,9 @@
 
 import time
 import os
+import numpy as np
+import telnetlib
+from collections import defaultdict
 
 from chimera.core.chimeraobject import ChimeraObject
 from chimera.core.lock import lock
@@ -28,7 +31,6 @@ from chimera.core.constants import SYSTEM_CONFIG_DIRECTORY
 from chimera.core.exceptions import ChimeraException
 from chimera.util.enum import Enum
 
-import telnetlib
 
 __all__ = ["TPLBase"]
 
@@ -43,24 +45,31 @@ CMDStatus = Enum("DONE","ABORTED","WAITING","TIMEOUT")
 
 SEND = Enum("OK","ERROR")
 
-_CmdType = {'0' : None,
-           '1' : int,
-           '2' : float,
-           '3' : str}
+def retStr():
+    return str
 
+_CmdType = defaultdict(retStr)
+
+_CmdType['0'] = None
+_CmdType['1'] = int
+_CmdType['2'] = float
+_CmdType['3'] = str
 
 class Command():
-    id = 0
-    cmd = None
-    object = None
-    received = []
-    events = []
-    dtype = None
-    status = None
-    allstatus = []
-    ok = False
-    complete = False
-    data = []
+
+    def __init__(self):
+        self.id = 0
+        self.cmd = None
+        self.object = None
+        self.received = []
+        self.events = []
+        self.dtype = None
+        self.status = None
+        self.allstatus = []
+        self.ok = False
+        self.complete = False
+        self.data = []
+
 
     def __str__(self):
         return str(self.id) + ' ' + self.cmd + ' ' + self.object + '\r\n'
@@ -74,7 +83,8 @@ class TPL(ChimeraObject):
                   "password": 'admin',
                   "freq": 90,
                   "timeout": 60,
-                  "waittime": 0.5}
+                  "waittime": 0.5,
+                  "history" : 1000}
 
     def __init__(self):
 
@@ -90,6 +100,8 @@ class TPL(ChimeraObject):
 
         # Command counter
         self.next_command_id = 1
+        self.last_cmd_deleted = 0
+
         # Store received objects
         self.commands_sent = {}
 
@@ -112,27 +124,50 @@ class TPL(ChimeraObject):
 
         # self.log.debug('[control] entering...')
 
+        # check if there is any incomplete command
+        incomplete = np.any(np.array([not cmd.complete for cmd in self.commands_sent.values()]))
+        if incomplete:
+            self.log.debug('[control] TPL has incomplete commands')
+        else:
+            return True
+
         recv = self.expect()
 
         nrec = 0
 
         while recv[1]:
             nrec+=1
+            cmdid = int(recv[1].group('CMDID'))
+
             if 'DATA INLINE' in recv[2]:
                 if '!TYPE' in recv[2]:
-                    self.commands_sent[recv[1].group('CMDID')].dtype = _CmdType[recv[1].group('VALUE')]
+                    self.commands_sent[cmdid].dtype = _CmdType[recv[1].group('VALUE')]
                 else:
-                    self.commands_sent[recv[1].group('CMDID')].data.append(self.commands_sent[recv[1].group('CMDID')].dtype(recv[1].group('VALUE').replace('"','')))
+                    self.commands_sent[cmdid].data.append(self.commands_sent[cmdid].dtype(recv[1].group('VALUE').replace('"','')))
             elif 'COMMAND' in recv[2]:
-                self.commands_sent[recv[1].group('CMDID')].status = recv[1].group('STATUS')
-                self.commands_sent[recv[1].group('CMDID')].allstatus.append(recv[1].group('STATUS'))
+                self.commands_sent[cmdid].status = recv[1].group('STATUS')
+                self.commands_sent[cmdid].allstatus.append(recv[1].group('STATUS'))
+                if self.commands_sent[cmdid].status == 'OK':
+                    self.commands_sent[cmdid].ok = True
+                elif self.commands_sent[cmdid].status == 'COMPLETE':
+                    self.commands_sent[cmdid].complete = True
 
             elif 'EVENT ERROR' in recv[2]:
-                self.commands_sent[recv[1].group('CMDID')].events.append(recv[1].group('ENCM'))
+                self.commands_sent[cmdid].events.append(recv[1].group('ENCM'))
 
             recv = self.expect()
 
+        # Check size of commands and clear history
+        while len(self.commands_sent) > int(self["history"]):
+            self.last_cmd_deleted += 1
+            self.log.debug('[control] Cleaning command history. Deleting cmd with id: %i'%self.last_cmd_deleted)
+            self.commands_sent.pop(self.last_cmd_deleted)
+
         # self.log.debug('[control] Received %i commands'%nrec)
+        # for cmd in self.commands_sent.values():
+        #     msg = '%s %s %s'%(cmd.id,cmd.status,cmd.allstatus)
+        #     self.log.debug(msg)
+        self.log.debug('[control] Done')
 
         return True
 
@@ -202,7 +237,7 @@ class TPL(ChimeraObject):
     def getNextID(self):
         ocmid = self.next_command_id
         self.next_command_id+=1
-        return str(ocmid)
+        return ocmid
 
     def sendcomm(self, comm, object):
 
@@ -211,6 +246,7 @@ class TPL(ChimeraObject):
         cmd.cmd = comm
         cmd.object = object
         cmd.data = []
+        cmd.allstatus = []
 
         self.commands_sent[cmd.id] = cmd
         status = self.send(cmd)
@@ -295,7 +331,17 @@ class TPL(ChimeraObject):
 
         ocmid = self.get(object + '!TYPE;' + object, wait=True)
 
-        return self.commands_sent[ocmid].data[0]
+        start = time.time()
+        while not self.commands_sent[ocmid].complete:
+            time.sleep(self["waittime"])
+            if time.time() > start+self["timeout"]:
+                break
+
+        if len(self.commands_sent[ocmid].data) > 0:
+            return self.commands_sent[ocmid].data[0]
+        else:
+            self.log.warning('Command %s returned nothing...'%(self.commands_sent[ocmid]))
+            return None
 
         st = self.commands_sent[ocmid].status
 

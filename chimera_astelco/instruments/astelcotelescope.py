@@ -1378,15 +1378,18 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         sensors = []
         tpl = self.getTPL()
 
-        for n in range(self["sensors"]):
+        for n in range(int(self["sensors"])):
             description = tpl.getobject('AUXILIARY.SENSOR[%i].DESCRIPTION' % (n + 1))
+
             if not description:
                 continue
             elif "FAILED" in description:
                 continue
+
             value = tpl.getobject('AUXILIARY.SENSOR[%i].VALUE' % (n + 1))
             unit = tpl.getobject('AUXILIARY.SENSOR[%i].UNITY' % (n + 1))
             sensors.append((description, value, unit))
+            sensors.append((0, 0, 0))
 
         return sensors
 
