@@ -43,18 +43,24 @@ CMDStatus = Enum("DONE","ABORTED","WAITING","TIMEOUT")
 
 SEND = Enum("OK","ERROR")
 
+_CmdType = {'0' : None,
+           '1' : int,
+           '2' : float,
+           '3' : str}
+
+
 class Command():
     id = 0
     cmd = None
     object = None
     received = []
     events = []
-    cmdtype = None
+    dtype = None
     status = None
     allstatus = []
     ok = False
     complete = False
-    data = False
+    data = []
 
     def __str__(self):
         return str(self.id) + ' ' + self.cmd + ' ' + self.object + '\r\n'
@@ -104,7 +110,7 @@ class TPL(ChimeraObject):
     @lock
     def control(self):
 
-        self.log.debug('[control] entering...')
+        # self.log.debug('[control] entering...')
 
         recv = self.expect()
 
@@ -112,19 +118,30 @@ class TPL(ChimeraObject):
 
         while recv[1]:
             nrec+=1
-            self.log.debug(recv[2])
+            if 'DATA INLINE' in recv[2]:
+                if '!TYPE' in recv[2]:
+                    self.commands_sent[recv[1].group('CMDID')].dtype = _CmdType[recv[1].group('VALUE')]
+                else:
+                    self.commands_sent[recv[1].group('CMDID')].data.append(self.commands_sent[recv[1].group('CMDID')].dtype(recv[1].group('VALUE').replace('"','')))
+            elif 'COMMAND' in recv[2]:
+                self.commands_sent[recv[1].group('CMDID')].status = recv[1].group('STATUS')
+                self.commands_sent[recv[1].group('CMDID')].allstatus.append(recv[1].group('STATUS'))
+
+            elif 'EVENT ERROR' in recv[2]:
+                self.commands_sent[recv[1].group('CMDID')].events.append(recv[1].group('ENCM'))
+
             recv = self.expect()
 
-        self.log.debug('[control] Received %i commands'%nrec)
+        # self.log.debug('[control] Received %i commands'%nrec)
 
         return True
 
     def expect(self):
 
-        return self.sock.expect(['(?P<CMDID>\d+) COMMAND (?P<STATUS>\S+)\n',
-                                 '(?P<CMDID>\d+) DATA INLINE (?P<OBJECT>\S+)=(?P<OBJ>\S+)\n',
+        return self.sock.expect(['(?P<CMDID>\d+) DATA INLINE (?P<OBJECT>\S+)=(?P<VALUE>\S+)\n',
+                                 '(?P<CMDID>\d+) COMMAND (?P<STATUS>\S+)\n',
                                  '(?P<CMDID>\d+) EVENT ERROR (?P<OBJECT>\S+):(?P<ENCM>(.*?)\s*)\n'],
-                                timeout=self['timeout'])
+                                timeout=self['freq']*2.)
 
     @lock
     def open(self):  # converted to Astelco
@@ -185,7 +202,7 @@ class TPL(ChimeraObject):
     def getNextID(self):
         ocmid = self.next_command_id
         self.next_command_id+=1
-        return ocmid
+        return str(ocmid)
 
     def sendcomm(self, comm, object):
 
@@ -193,27 +210,29 @@ class TPL(ChimeraObject):
         cmd.id = self.getNextID()
         cmd.cmd = comm
         cmd.object = object
+        cmd.data = []
 
+        self.commands_sent[cmd.id] = cmd
         status = self.send(cmd)
 
-        if status == SEND.OK:
-            self.commands_sent[cmd.id] = cmd
-        else:
+        if status != SEND.OK:
+            self.commands_sent[cmd.id].status = status
             return cmd.id
 
-        if comm in ('GET', 'SET'):
-            self.commands_sent[cmd.id].data = False
+        # if comm in ('GET', 'SET'):
+        #     self.commands_sent[cmd.id].data = False
 
         return cmd.id
 
     def send(self, message='\r\n'):
 
-        self.log.debug( message )
+        msg = '%s'%(message)
+        self.log.debug( msg[:-1] )
 
         try:
-            self.sock.write(message)
+            self.sock.write('%s'%message)
         except Exception, e:
-            self.log.error(e)
+            self.log.exception(e)
             return SEND.ERROR
 
         return SEND.OK
@@ -225,7 +244,7 @@ class TPL(ChimeraObject):
 
         if wait:
             start = time.time()
-            while not self.commands_sent[ret].complete:
+            while self.commands_sent[ret].status != 'COMPLETE':
                 if time.time() > start+self['timeout']:
                     self.log.warning('Command %i timed out...'%(ret))
                     break
@@ -237,14 +256,14 @@ class TPL(ChimeraObject):
 
         if not binary:
             obj = object + '=' + str(value)
-            cmid = self.sendcomm('SET', obj, wait)
+            cmid = self.sendcomm('SET', obj)
         else:
             obj = object + ':', len(value)
-            cmid = self.sendcomm('SET', obj, wait)
+            cmid = self.sendcomm('SET', obj)
             self.sock.write(value.tostring())
         if wait:
             start = time.time()
-            while not self.commands_sent[cmid].complete:
+            while not self.commands_sent[cmid].status == "COMPLETE":
                 if  time.time() > start+self['timeout']:
                     self.log.warning('Command %i timed out...'%(ret))
                     break
@@ -253,3 +272,58 @@ class TPL(ChimeraObject):
         return cmid
 
 
+    def getobject(self, object):
+
+        # ocmid = self.get(object + '!TYPE', wait=True)
+        #
+        # st = self.commands_sent[ocmid]['status']
+        # ntries = 0
+        #
+        # return None
+        #
+        # while not st == 'COMPLETE':
+        #     log.debug( '[%3i/%i] TPL2 getobject: got status "%s"'%(ntries,self.max_tries,st) )
+        #     ntries+=1
+        #     time.sleep(self.sleep)
+        #     st = self.commands_sent[ocmid]['status']
+        #     if ntries > self.max_tries:
+        #         break
+        #
+        # if st != 'COMPLETE':
+        #     log.warning( 'TPL2 getobject: got status %s ...' %st)
+        #     return None
+
+        ocmid = self.get(object + '!TYPE;' + object, wait=True)
+
+        return self.commands_sent[ocmid].data[0]
+
+        st = self.commands_sent[ocmid].status
+
+        while not st == 'COMPLETE':
+            log.debug( '[%3i/%i] TPL2 getobject: got status "%s"'%(ntries,self.max_tries,st) )
+            ntries+=1
+            time.sleep(self.sleep)
+            st = self.commands_sent[ocmid]['status']
+            if ntries > self.max_tries:
+                break
+
+        if st != 'COMPLETE':
+            log.warning( 'TPL2 getobject: got status  %s ...' %st )
+            return None
+        if self.debug:
+            log.debug(self.received_objects)
+        if self.received_objects[object + '!TYPE'] == '0':
+            self.received_objects[object] = None
+        elif self.received_objects[object + '!TYPE'] == '1':
+            self.received_objects[object] = int(self.received_objects[object])
+        elif self.received_objects[object + '!TYPE'] == '2':
+            self.received_objects[object] = float(
+                self.received_objects[object])
+        elif self.received_objects[object + '!TYPE'] == '3':
+            self.received_objects[object] = str(self.received_objects[object])
+        else:
+            self.received_objects[object] = None
+        return self.received_objects[object]
+
+    def succeeded(self,cmdid):
+         return self.commands_sent[cmdid].status == 'COMPLETE'
