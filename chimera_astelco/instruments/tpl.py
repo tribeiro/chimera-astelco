@@ -340,7 +340,8 @@ class TPL(ChimeraObject):
         if len(self.commands_sent[ocmid].data) > 0:
             return self.commands_sent[ocmid].data[0]
         else:
-            self.log.warning('Command %s returned nothing...'%(self.commands_sent[ocmid]))
+            cmd = '%s'%self.commands_sent[ocmid]
+            self.log.warning('Command %s returned nothing...'%(cmd[:-2]))
             return None
 
         st = self.commands_sent[ocmid].status
