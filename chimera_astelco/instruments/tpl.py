@@ -50,7 +50,7 @@ def retStr():
 
 _CmdType = defaultdict(retStr)
 
-_CmdType['0'] = None
+_CmdType['0'] = str
 _CmdType['1'] = int
 _CmdType['2'] = float
 _CmdType['3'] = str
@@ -63,7 +63,7 @@ class Command():
         self.object = None
         self.received = []
         self.events = []
-        self.dtype = None
+        self.dtype = str
         self.status = None
         self.allstatus = []
         self.ok = False
@@ -137,7 +137,13 @@ class TPL(ChimeraObject):
 
         while recv[1]:
             nrec+=1
+            self.log.debug(recv[2][:-1])
             cmdid = int(recv[1].group('CMDID'))
+            if not cmdid in self.commands_sent.keys():
+                self.log.warning('Received a bad command id %i. Skipping'%cmdid)
+                return True
+
+            self.commands_sent[cmdid].received.append(recv[2][:-1])
 
             if 'DATA INLINE' in recv[2]:
                 if '!TYPE' in recv[2]:

@@ -33,9 +33,6 @@ from chimera.core.lock import lock
 from chimera.core.exceptions import ChimeraException
 from chimera.core.constants import SYSTEM_CONFIG_DIRECTORY
 
-from chimera.util.tpl2 import TPL2, SocketError
-
-
 class AstelcoException(ChimeraException):
     pass
 
@@ -49,12 +46,9 @@ class AstelcoDome(DomeBase):
     AstelcoDome interfaces chimera with TSI system to control dome.
     '''
 
-    __config__ = {'user': 'admin',
-                  'password': 'admin',
-                  'ahost': 'localhost',
-                  'aport': "65432",
-                  "maxidletime": 90.,
-                  "stabilization_time": 5.}
+    __config__ = {"maxidletime": 90.,
+                  "stabilization_time": 5.,
+                  'tpl':'/TPL/0'}
 
 
     def __init__(self):
@@ -91,11 +85,12 @@ class AstelcoDome(DomeBase):
 
         self.open()
 
+        tpl = self.getTPL()
         # Reading position
-        self._position = self._tpl.getobject('POSITION.HORIZONTAL.DOME')
-        self._slitOpen = self._tpl.getobject('AUXILIARY.DOME.REALPOS') > 0
-        self._slitPos = self._tpl.getobject('AUXILIARY.DOME.REALPOS')
-        self._syncmode = self._tpl.getobject('POINTING.SETUP.DOME.SYNCMODE')
+        self._position = tpl.getobject('POSITION.HORIZONTAL.DOME')
+        self._slitOpen = tpl.getobject('AUXILIARY.DOME.REALPOS') > 0
+        self._slitPos = tpl.getobject('AUXILIARY.DOME.REALPOS')
+        self._syncmode = tpl.getobject('POINTING.SETUP.DOME.SYNCMODE')
         self._tel = self.getTelescope()
 
         if self._syncmode == 0:
@@ -109,7 +104,7 @@ class AstelcoDome(DomeBase):
         if self.isSlewing():
             self.abortSlew()
 
-        self.close()
+        return True
 
     @lock
     def slewToAz(self, az):
@@ -155,19 +150,21 @@ class AstelcoDome(DomeBase):
             self._slewing = True
             caz = self.getAz()
 
-            self._tpl.set('POSITION.INSTRUMENTAL.DOME[0].TARGETPOS', '%f' % az)
+            tpl = self.getTPL()
+
+            tpl.set('POSITION.INSTRUMENTAL.DOME[0].TARGETPOS', '%f' % az)
 
             time.sleep(self['stabilization_time'])
 
             while self.isSlewing():
-                time.sleep(1.0)
+
                 if time.time() > (start_time + self._maxSlewTime):
                     self.log.warning('Dome syncronization timed-out...')
                     self.slewComplete(self.getAz(), DomeStatus.TIMEOUT)
                     return 0
                 elif self._abort.isSet():
                     self._slewing = False
-                    self._tpl.set('POSITION.INSTRUMENTAL.DOME[0].TARGETPOS', caz)
+                    tpl.set('POSITION.INSTRUMENTAL.DOME[0].TARGETPOS', caz)
                     self.slewComplete(self.getAz(), DomeStatus.ABORTED)
                     return 0
                 elif abs(caz - self.getAz()) < 1e-6:
@@ -179,21 +176,21 @@ class AstelcoDome(DomeBase):
 
             self.slewComplete(self.getAz(), DomeStatus.OK)
 
-            raise NotImplementedError('Dome slew not implemented...')
-
 
     @lock
     def stand(self):
         self.log.debug("[mode] standing...")
-        self._tpl.set('POINTING.SETUP.DOME.SYNCMODE', 0)
-        self._syncmode = self._tpl.getobject('POINTING.SETUP.DOME.SYNCMODE')
+        tpl = self.getTPL()
+        tpl.set('POINTING.SETUP.DOME.SYNCMODE', 0)
+        self._syncmode = tpl.getobject('POINTING.SETUP.DOME.SYNCMODE')
         self._mode = Mode.Stand
 
     @lock
     def track(self):
         self.log.debug("[mode] tracking...")
-        self._tpl.set('POINTING.SETUP.DOME.SYNCMODE', 4)
-        self._syncmode = self._tpl.getobject('POINTING.SETUP.DOME.SYNCMODE')
+        tpl = self.getTPL()
+        tpl.set('POINTING.SETUP.DOME.SYNCMODE', 4)
+        self._syncmode = tpl.getobject('POINTING.SETUP.DOME.SYNCMODE')
         self._mode = Mode.Track
 
     @lock
@@ -204,14 +201,16 @@ class AstelcoDome(DomeBase):
         :return: True
         '''
 
-        self.log.debug('[control] %s' % self._tpl.getobject('SERVER.UPTIME'))
+        tpl = self.getTPL()
+        self.log.debug('[control] %s' % tpl.getobject('SERVER.UPTIME'))
 
         return True
 
 
     def isSlewing(self):
 
-        motionState = self._tpl.getobject('TELESCOPE.MOTION_STATE')
+        tpl = self.getTPL()
+        motionState = tpl.getobject('TELESCOPE.MOTION_STATE')
         return ( motionState != 11 )
 
     def abortSlew(self):
@@ -220,7 +219,8 @@ class AstelcoDome(DomeBase):
     @lock
     def getAz(self):
 
-        ret = self._tpl.getobject('POSITION.INSTRUMENTAL.DOME[0].CURRPOS')
+        tpl = self.getTPL()
+        ret = tpl.getobject('POSITION.INSTRUMENTAL.DOME[0].CURRPOS')
         if ret:
             self._position = ret
         elif not self._position:
@@ -230,7 +230,8 @@ class AstelcoDome(DomeBase):
 
     def getMode(self):
 
-        self._syncmode = self._tpl.getobject('POINTING.SETUP.DOME.SYNCMODE')
+        tpl = self.getTPL()
+        self._syncmode = tpl.getobject('POINTING.SETUP.DOME.SYNCMODE')
 
         if self._syncmode == 0:
             self._mode = Mode.Stand
@@ -240,35 +241,15 @@ class AstelcoDome(DomeBase):
 
     @lock
     def open(self):
-        self.log.info('Connecting to Astelco server %s:%i...' % (self['ahost'], int(self['aport'])))
-
-        self._tpl = TPL2(user=self['user'],
-                         password=self['password'],
-                         host=self['ahost'],
-                         port=int(self['aport']),
-                         echo=False,
-                         verbose=False,
-                         debug=True)
-
-        self.log.debug(self._tpl.log)
 
         try:
-            self._tpl.get('SERVER.INFO.DEVICE')
-            print self._tpl.getobject('SERVER.UPTIME')
-            self._tpl.debug = True
-            return True
-
-        except (SocketError, IOError):
+            tpl = self.getTPL()
+            tpl.get('SERVER.INFO.DEVICE')
+            self.log.debug(tpl.getobject('SERVER.UPTIME'))
+        except:
             raise AstelcoException("Error while opening %s." % self["device"])
 
-    @lock
-    def close(self):  # converted to Astelco
-        if self._tpl.isListening():
-            self._tpl.disconnect()
-            return True
-        else:
-            return False
-
+        return True
 
     @lock
     def openSlit(self):
@@ -283,19 +264,18 @@ class AstelcoDome(DomeBase):
 
         self._slitMoving = True
         self._abort.clear()
+        tpl = self.getTPL()
 
-        cmdid = self._tpl.set('AUXILIARY.DOME.TARGETPOS', 1, wait=True)
+        cmdid = tpl.set('AUXILIARY.DOME.TARGETPOS', 1, wait=True)
 
         time_start = time.time()
 
         cmdComplete = False
         while True:
 
-            realpos = self._tpl.getobject('AUXILIARY.DOME.REALPOS')
+            realpos = tpl.getobject('AUXILIARY.DOME.REALPOS')
 
-            for line in self._tpl.commands_sent[cmdid]['received']:
-                self.log.info(line[:-1])
-                if ( (line.find('COMPLETE') > 0) and (not realpos == 1) and (not cmdComplete) ):
+            if tpl.commands_sent[cmdid].complete and ( (not realpos == 1) and (not cmdComplete) ):
                     self.log.warning('Slit opened! Opening Flap...')
                     cmdid = self._tpl.set('AUXILIARY.DOME.TARGETPOS', 1, wait=True)
                     cmdComplete = True
@@ -310,8 +290,6 @@ class AstelcoDome(DomeBase):
                 return DomeStatus.ABORTED
             elif time.time() > time_start + self._maxSlewTime:
                 return DomeStatus.TIMEOUT
-            else:
-                time.sleep(5.0)
 
         return True
 
@@ -323,16 +301,17 @@ class AstelcoDome(DomeBase):
 
         self.log.info("Closing slit")
 
-        cmdid = self._tpl.set('AUXILIARY.DOME.TARGETPOS', 0)
+        tpl = self.getTPL()
+        cmdid = tpl.set('AUXILIARY.DOME.TARGETPOS', 0)
 
         time_start = time.time()
 
         while True:
 
-            for line in self._tpl.commands_sent[cmdid]['received']:
-                self.log.info(line[:-1])
+            for line in tpl.commands_sent[cmdid].received:
+                self.log.debug(line)
 
-            realpos = self._tpl.getobject('AUXILIARY.DOME.REALPOS')
+            realpos = tpl.getobject('AUXILIARY.DOME.REALPOS')
             if realpos == 0:
                 self._slitMoving = False
                 self._slitOpen = False
@@ -342,11 +321,21 @@ class AstelcoDome(DomeBase):
                 return DomeStatus.ABORTED
             elif time.time() > time_start + self._maxSlewTime:
                 return DomeStatus.TIMEOUT
-            else:
-                time.sleep(5.0)
 
 
     def isSlitOpen(self):
-        self._slitPos = self._tpl.getobject('AUXILIARY.DOME.REALPOS')
+        tpl = self.getTPL()
+        self._slitPos = tpl.getobject('AUXILIARY.DOME.REALPOS')
         self._slitOpen = self._slitPos > 0
         return self._slitOpen
+
+    # utilitaries
+    def getTPL(self):
+        try:
+            p = self.getManager().getProxy(self['tpl'], lazy=True)
+            if not p.ping():
+                return False
+            else:
+                return p
+        except ObjectNotFoundException:
+            return False
