@@ -63,7 +63,10 @@ vector. Temperature compensation can also be performed.
                   'hexapod': True,
                   'naxis': 5,
                   'step': 0.001,
-                  'unit': 'mm'}
+                  'unit': 'mm',
+                  'tplsleep': 0.01,
+                  'maxidletime': 90.,
+                  'model': 'AstelcoFocuser'}  # sec.
 
     def __init__(self):
         FocuserBase.__init__(self)
@@ -77,13 +80,11 @@ vector. Temperature compensation can also be performed.
         self._step = [None] * self['naxis']
         self._lastTimeLog = None
 
-        self._tsi = None
         self._abort = threading.Event()
 
         self._errorNo = 0
         self._errorString = ""
 
-        self._poketime = 90.0
         # debug log
         self._debugLog = None
         try:
@@ -93,15 +94,14 @@ vector. Temperature compensation can also be performed.
             self.log.warning("Could not create astelco debug file (%s)" % str(e))
 
 
-            # self._user="admin"
-        #self._password="admin"
-        #self._aahost="localhost"
-        #self._aaport="65432"
-        #print '<--> INIT <-->'
+            #self._user="admin"
+            #self._password="admin"
+            #self._aahost="localhost"
+            #self._aaport="65432"
+            #print '<--> INIT <-->'
 
     def __start__(self):
 
-        print '-->FOCUS START<--'
         self.open()
 
         # range and step setting
@@ -112,29 +112,35 @@ vector. Temperature compensation can also be performed.
                 step = self._tpl.getobject('POSITION.INSTRUMENTAL.FOCUS[%i].STEP' % ax.index)
                 self._range[ax.index] = (min, max)
                 self._step[ax.index] = self["step"]
-                # if self._step[ax.index] == 'UNKNOWN':
-            #	self._step[ax.index] = self["step"]
+                #if self._step[ax.index] == 'UNKNOWN':
+                #	self._step[ax.index] = self["step"]
         else:
             min = self._tpl.getobject('POSITION.INSTRUMENTAL.FOCUS.CURRPOS!MIN')
             max = self._tpl.getobject('POSITION.INSTRUMENTAL.FOCUS.CURRPOS!MAX')
             self._range[Axis.Z.index] = (min, max)
             self._step[Axis.Z.index] = self._tpl.getobject('POSITION.INSTRUMENTAL.FOCUS.STEP')
 
+        self.setHz(1. / self["maxidletime"])
+
         return True
 
     def __stop__(self):
         self.close()
 
-    def __main__(self):
-        pass
+    @lock
+    def control(self):
+        '''
+        Just keep the connection alive. Everything else is done by astelco.
+
+        :return: True
+        '''
+
+        self.log.debug('[control] %s' % self._tpl.getobject('SERVER.UPTIME'))
+
+        return True
 
     def naxis(self):
         return len(self._position)
-
-    def helloTPL(self):
-        self.log.debug(self._tpl.getobject('SERVER.UPTIME'))
-        self.sayhello = threading.Timer(self._poketime, self.helloTPL)
-        self.sayhello.start()
 
     @lock
     def open(self):  # converted to Astelco
@@ -147,6 +153,7 @@ vector. Temperature compensation can also be performed.
                          port=int(self['aport']),
                          echo=False,
                          verbose=False,
+                         sleep=self["tplsleep"],
                          debug=True)
         self.log.debug(self._tpl.log)
 
@@ -156,11 +163,6 @@ vector. Temperature compensation can also be performed.
             self._tpl.received_objects
             print self._tpl.getobject('SERVER.UPTIME')
             self._tpl
-
-            self._tpl.debug = False
-            self.sayhello = threading.Timer(self._poketime, self.helloTPL)
-            self.sayhello.start()
-
             return True
 
         except (SocketError, IOError):
@@ -168,10 +170,6 @@ vector. Temperature compensation can also be performed.
 
     @lock
     def close(self):  # converted to Astelco
-        self.sayhello.cancel()
-        self.log.debug("TPl2 log:\n")
-        for lstr in self._tpl.log:
-            self.log.debug(lstr)
         if self._tpl.isListening():
             self._tpl.disconnect()
             return True
@@ -211,7 +209,7 @@ vector. Temperature compensation can also be performed.
 
         self.log.debug('Setting offset on %s-axis to %f %s ...' % (ax, position * self._step[ax.index], self['unit']))
 
-        # return 0
+        #return 0
 
         if self._inRange(position * self._step[ax.index], ax):
             self._setPosition(position * self._step[ax.index], ax)
@@ -235,7 +233,7 @@ vector. Temperature compensation can also be performed.
     @lock
     def getPosition(self):
 
-        return self.getOffset()
+        #return self.getOffset()[Axis.Z]
 
         if self['hexapod']:
             pos = [0] * self['naxis']
@@ -276,7 +274,7 @@ vector. Temperature compensation can also be performed.
 
         # check limit state
         LSTATE = self._tpl.getobject('POSITION.INSTRUMENTAL.FOCUS[%i].LIMIT_STATE' % axis.index)
-        code = '%16s' % (bin(LSTATE)[2:][::-1])
+        #code = '%16s'%(bin(LSTATE)[2:][::-1])
         bitcode = [0, 1, 7, 8, 9, 15]
         LMESSG = ['MINIMUM HARDWARE LIMIT',
                   'MAXIMUM HARDWARE LIMIT',
@@ -287,7 +285,7 @@ vector. Temperature compensation can also be performed.
         STATE = True
         msg = ''
         for ib, bit in enumerate(bitcode):
-            if code[bit] == '1':
+            if ( LSTATE & (1 << bit) ) != 0:
                 STATE = False
                 msg += LMESSG[ib] + '|'
 
@@ -297,7 +295,7 @@ vector. Temperature compensation can also be performed.
                                                                msg)
             self.log.error(msg)
             raise InvalidFocusPositionException(msg)
-            return -1
+            #return -1
 
         self._position[axis.index] = n
 
@@ -324,52 +322,13 @@ vector. Temperature compensation can also be performed.
                 ldir += str(i)
             raise AstelcoHexapodException('Direction not valid! Try one of %s' % ldir)
 
+    def getMetadata(self, request):
+        x, y, z, u, v = self.getPosition()
+        return [('FOCUSER', str(self['model']), 'Focuser Model'),
+                ('XHEX', x, 'Hexapod x position'),
+                ('YHEX', y, 'Hexapod y position'),
+                ('FOCUS', z,
+                 'Focuser position used for this observation'),
+                ('UHEX', u, 'Hexapod u angle'),
+                ('VHEX', v, 'Hexapod v angle')]
 
-'''
-
-
-
-
-
-	def _move(self, direction, steps,axis=Axis.Z):
-
-		if direction not in Direction:
-			raise ValueError("Invalid direction '%s'." % direction)
-
-		if axis not in Axis:
-			raise ValueError("Invalid axis '%s'." % axis)
-
-		if not self._inRange(direction, steps, axis):
-			raise InvalidFocusPositionException(
-												"%d is outside focuser limits." % steps)
-		
-		self._moveTo(direction, steps, Axis.Z)
-		
-		return True
-
-
-	def _inRange(self, direction, n, axis=Axis.Z):
-
-		# Assumes:
-		#   0 -------  N
-		#  IN         OUT
-
-		current = self.getPosition(axis)
-
-		if direction == Direction.IN:
-			target = current - n
-		else:
-			target = current + n
-
-		min_pos, max_pos = self.getRange(axis)
-
-		return (min_pos <= target <= max_pos)
-
-
-	def getPosition(self,axis=Axis.Z):
-		return self._position[axis]
-
-	def getRange(self,axis=Axis.Z):
-		return self._range[axis]
-
-'''
