@@ -41,9 +41,6 @@ from chimera.core.lock import lock
 from chimera.core.exceptions import ObjectNotFoundException, ChimeraException
 from chimera.core.constants import SYSTEM_CONFIG_DIRECTORY
 
-from chimera.util.tpl2 import TPL2, SocketError
-
-
 Direction = Enum("E", "W", "N", "S")
 AstelcoTelescopeStatus = Enum("NoLICENSE",
                               "NoTELESCOPE",
