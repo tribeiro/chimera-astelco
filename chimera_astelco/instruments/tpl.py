@@ -135,37 +135,41 @@ class TPL(ChimeraObject):
 
         nrec = 0
 
-        while recv[1]:
-            nrec+=1
-            self.log.debug(recv[2][:-1])
-            cmdid = int(recv[1].group('CMDID'))
-            if not cmdid in self.commands_sent.keys():
-                self.log.warning('Received a bad command id %i. Skipping'%cmdid)
-                return True
+        try:
+            while recv[1]:
+                nrec+=1
+                self.log.debug(recv[2][:-1])
+                cmdid = int(recv[1].group('CMDID'))
+                if not cmdid in self.commands_sent.keys():
+                    self.log.warning('Received a bad command id %i. Skipping'%cmdid)
+                    return True
 
-            self.commands_sent[cmdid].received.append(recv[2][:-1])
+                self.commands_sent[cmdid].received.append(recv[2][:-1])
 
-            if 'DATA INLINE' in recv[2]:
-                if '!TYPE' in recv[2]:
-                    self.commands_sent[cmdid].dtype = _CmdType[recv[1].group('VALUE')]
-                else:
-                    self.commands_sent[cmdid].data.append(self.commands_sent[cmdid].dtype(recv[1].group('VALUE').replace('"','')))
-            elif 'COMMAND' in recv[2]:
-                self.commands_sent[cmdid].status = recv[1].group('STATUS')
-                self.commands_sent[cmdid].allstatus.append(recv[1].group('STATUS'))
-                if self.commands_sent[cmdid].status == 'OK':
-                    self.commands_sent[cmdid].ok = True
-                elif self.commands_sent[cmdid].status == 'COMPLETE':
-                    self.commands_sent[cmdid].complete = True
+                if 'DATA INLINE' in recv[2]:
+                    if '!TYPE' in recv[2]:
+                        self.commands_sent[cmdid].dtype = _CmdType[recv[1].group('VALUE')]
+                    else:
+                        self.commands_sent[cmdid].data.append(self.commands_sent[cmdid].dtype(recv[1].group('VALUE').replace('"','')))
+                elif 'COMMAND' in recv[2]:
+                    self.commands_sent[cmdid].status = recv[1].group('STATUS')
+                    self.commands_sent[cmdid].allstatus.append(recv[1].group('STATUS'))
+                    if self.commands_sent[cmdid].status == 'OK':
+                        self.commands_sent[cmdid].ok = True
+                    elif self.commands_sent[cmdid].status == 'COMPLETE':
+                        self.commands_sent[cmdid].complete = True
 
-            elif 'EVENT ERROR' in recv[2]:
-                self.commands_sent[cmdid].events.append(recv[1].group('ENCM'))
+                elif 'EVENT ERROR' in recv[2]:
+                    self.commands_sent[cmdid].events.append(recv[1].group('ENCM'))
 
-            incomplete = np.any(np.array([not cmd.complete for cmd in self.commands_sent.values()]))
-            if not incomplete:
-                break
+                incomplete = np.any(np.array([not cmd.complete for cmd in self.commands_sent.values()]))
+                if not incomplete:
+                    break
 
-            recv = self.expect()
+                recv = self.expect()
+        except Exception,e:
+            self.log.exception(e)
+            return True
 
         # Check size of commands and clear history
         while len(self.commands_sent) > int(self["history"]):
