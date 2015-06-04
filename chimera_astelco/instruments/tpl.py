@@ -105,6 +105,10 @@ class TPL(ChimeraObject):
         # Store received objects
         self.commands_sent = {}
 
+        self._expect = [ '(?P<CMDID>\d+) DATA INLINE (?P<OBJECT>\S+)=(?P<VALUE>\S+)\n',
+                         '(?P<CMDID>\d+) COMMAND (?P<STATUS>\S+)\n',
+                         '(?P<CMDID>\d+) EVENT ERROR (?P<OBJECT>\S+):(?P<ENCM>(.*?)\s*)\n']
+
 
     def __start__(self):
 
@@ -143,6 +147,20 @@ class TPL(ChimeraObject):
                 self.log.warning('Received a bad command id %i. Skipping'%cmdid)
                 return True
 
+            receivedlines = recv[2].count('\n')
+            recvList = []
+
+            if receivedlines > 1:
+                buff = recv[2].split('\n')
+                for rec in buff:
+                    parse = None
+                    for exp in self._expect:
+                        parse = re.search(exp)
+                        if parse:
+                            recvList.append((1,parse,rec))
+                            break
+                recv = recvList.pop(0)
+
             self.commands_sent[cmdid].received.append(recv[2][:-1])
 
             try:
@@ -162,9 +180,6 @@ class TPL(ChimeraObject):
                 elif 'EVENT ERROR' in recv[2]:
                     self.commands_sent[cmdid].events.append(recv[1].group('ENCM'))
 
-                incomplete = np.any(np.array([not cmd.complete for cmd in self.commands_sent.values()]))
-                if not incomplete:
-                    break
             except Exception,e:
                 self.log.error('[control] Error on command: %s'%(recv[2][:-1]))
                 self.commands_sent[cmdid].ok = False
@@ -172,7 +187,13 @@ class TPL(ChimeraObject):
                 self.log.exception(e)
                 pass
 
-            recv = self.expect()
+            incomplete = np.any(np.array([not cmd.complete for cmd in self.commands_sent.values()]))
+            if not incomplete and len(recvList) == 0:
+                break
+            elif len(recvList) > 0:
+                recv = recvList.pop(0)
+            else:
+                recv = self.expect()
 
         # Check size of commands and clear history
         while len(self.commands_sent) > int(self["history"]):
@@ -190,9 +211,7 @@ class TPL(ChimeraObject):
 
     def expect(self):
 
-        return self.sock.expect(['(?P<CMDID>\d+) DATA INLINE (?P<OBJECT>\S+)=(?P<VALUE>\S+)\n',
-                                 '(?P<CMDID>\d+) COMMAND (?P<STATUS>\S+)\n',
-                                 '(?P<CMDID>\d+) EVENT ERROR (?P<OBJECT>\S+):(?P<ENCM>(.*?)\s*)\n'],
+        return self.sock.expect(self._expect,
                                 timeout=self['timeout'])
 
     @lock
