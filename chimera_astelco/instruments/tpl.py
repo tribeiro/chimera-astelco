@@ -156,7 +156,7 @@ class TPL(ChimeraObject):
                 for rec in buff:
                     parse = None
                     for exp in self._expect:
-                        parse = re.search(exp)
+                        parse = re.search(exp,rec)
                         if parse:
                             recvList.append((1,parse,rec))
                             break
