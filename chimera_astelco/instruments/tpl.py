@@ -81,7 +81,7 @@ class TPL(ChimeraObject):
                   "tpl_port": 65432,
                   "user": 'admin',
                   "password": 'admin',
-                  "freq": 90,
+                  "freq": 0.1,
                   "timeout": 60,
                   "waittime": 0.5,
                   "history" : 1000}
@@ -108,7 +108,7 @@ class TPL(ChimeraObject):
 
     def __start__(self):
 
-        self.setHz(1.0)
+        self.setHz(self['freq'])
 
         self.log.debug('tpl START')
         self.open()
@@ -161,6 +161,10 @@ class TPL(ChimeraObject):
             elif 'EVENT ERROR' in recv[2]:
                 self.commands_sent[cmdid].events.append(recv[1].group('ENCM'))
 
+            incomplete = np.any(np.array([not cmd.complete for cmd in self.commands_sent.values()]))
+            if not incomplete:
+                break
+
             recv = self.expect()
 
         # Check size of commands and clear history
@@ -182,7 +186,7 @@ class TPL(ChimeraObject):
         return self.sock.expect(['(?P<CMDID>\d+) DATA INLINE (?P<OBJECT>\S+)=(?P<VALUE>\S+)\n',
                                  '(?P<CMDID>\d+) COMMAND (?P<STATUS>\S+)\n',
                                  '(?P<CMDID>\d+) EVENT ERROR (?P<OBJECT>\S+):(?P<ENCM>(.*?)\s*)\n'],
-                                timeout=self['freq']*2.)
+                                timeout=self['timeout'])
 
     @lock
     def open(self):  # converted to Astelco

@@ -29,13 +29,10 @@ from chimera.interfaces.focuser import (InvalidFocusPositionException,
 from chimera.instruments.focuser import FocuserBase
 
 from chimera.core.lock import lock
-from chimera.core.exceptions import ChimeraException
+from chimera.core.exceptions import ObjectNotFoundException, ChimeraException
 from chimera.core.constants import SYSTEM_CONFIG_DIRECTORY
 
 from chimera.util.enum import Enum
-
-from chimera.util.tpl2 import TPL2, SocketError
-
 
 class AstelcoException(ChimeraException):
     pass
@@ -56,15 +53,11 @@ can be equiped with hexapod hardware. In this case, comunition is done in a
 vector. Temperature compensation can also be performed.
     '''
 
-    __config__ = {'user': 'admin',
-                  'password': 'admin',
-                  'ahost': 'localhost',
-                  'aport': '65432',
-                  'hexapod': True,
+    __config__ = {'hexapod': True,
                   'naxis': 5,
                   'step': 0.001,
                   'unit': 'mm',
-                  'tplsleep': 0.01,
+                  'tpl': '/TPL/0',
                   'maxidletime': 90.,
                   'model': 'AstelcoFocuser'}  # sec.
 
@@ -93,32 +86,33 @@ vector. Temperature compensation can also be performed.
         except IOError, e:
             self.log.warning("Could not create astelco debug file (%s)" % str(e))
 
-
-            #self._user="admin"
-            #self._password="admin"
-            #self._aahost="localhost"
-            #self._aaport="65432"
-            #print '<--> INIT <-->'
-
     def __start__(self):
 
         self.open()
 
+        tpl = self.getTPL()
         # range and step setting
         if self['hexapod']:
             for ax in Axis:
-                min = self._tpl.getobject('POSITION.INSTRUMENTAL.FOCUS[%i].OFFSET!MIN' % ax.index)
-                max = self._tpl.getobject('POSITION.INSTRUMENTAL.FOCUS[%i].OFFSET!MAX' % ax.index)
-                step = self._tpl.getobject('POSITION.INSTRUMENTAL.FOCUS[%i].STEP' % ax.index)
+                min = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS[%i].OFFSET!MIN' % ax.index)
+                max = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS[%i].OFFSET!MAX' % ax.index)
+                # step = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS[%i].STEP' % ax.index)
+                try:
+                    min = int(min)
+                except:
+                    min = -999
+                try:
+                    max = int(max)
+                except:
+                    max = 999
+
                 self._range[ax.index] = (min, max)
                 self._step[ax.index] = self["step"]
-                #if self._step[ax.index] == 'UNKNOWN':
-                #	self._step[ax.index] = self["step"]
         else:
-            min = self._tpl.getobject('POSITION.INSTRUMENTAL.FOCUS.CURRPOS!MIN')
-            max = self._tpl.getobject('POSITION.INSTRUMENTAL.FOCUS.CURRPOS!MAX')
+            min = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS.CURRPOS!MIN')
+            max = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS.CURRPOS!MAX')
             self._range[Axis.Z.index] = (min, max)
-            self._step[Axis.Z.index] = self._tpl.getobject('POSITION.INSTRUMENTAL.FOCUS.STEP')
+            self._step[Axis.Z.index] = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS.STEP')
 
         self.setHz(1. / self["maxidletime"])
 
@@ -135,7 +129,8 @@ vector. Temperature compensation can also be performed.
         :return: True
         '''
 
-        self.log.debug('[control] %s' % self._tpl.getobject('SERVER.UPTIME'))
+        tpl = self.getTPL()
+        self.log.debug('[control] %s' % tpl.getobject('SERVER.UPTIME'))
 
         return True
 
@@ -144,37 +139,18 @@ vector. Temperature compensation can also be performed.
 
     @lock
     def open(self):  # converted to Astelco
-        self.log.info('Connecting to Astelco server %s:%i' % (self["ahost"],
-                                                              int(self["aport"])))
-
-        self._tpl = TPL2(user=self['user'],
-                         password=self['password'],
-                         host=self['ahost'],
-                         port=int(self['aport']),
-                         echo=False,
-                         verbose=False,
-                         sleep=self["tplsleep"],
-                         debug=True)
-        self.log.debug(self._tpl.log)
 
         try:
-            self._tpl
-            self._tpl.get('SERVER.INFO.DEVICE')
-            self._tpl.received_objects
-            print self._tpl.getobject('SERVER.UPTIME')
-            self._tpl
+            tpl = self.getTPL()
+            self.log.debug(tpl.getobject('SERVER.UPTIME'))
             return True
 
-        except (SocketError, IOError):
+        except:
             raise AstelcoException("Error while opening %s." % self["device"])
 
     @lock
     def close(self):  # converted to Astelco
-        if self._tpl.isListening():
-            self._tpl.disconnect()
-            return True
-        else:
-            return False
+        return True
 
     @lock
     def moveIn(self, n, axis='Z'):
@@ -221,27 +197,20 @@ vector. Temperature compensation can also be performed.
     @lock
     def getOffset(self):
 
+        tpl = self.getTPL()
         if self['hexapod']:
             pos = [0] * self['naxis']
             for iax in range(self['naxis']):
-                pos[iax] = self._tpl.getobject('POSITION.INSTRUMENTAL.FOCUS[%i].OFFSET' % iax)
+                pos[iax] = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS[%i].OFFSET' % iax)
             return pos
         else:
-            return self._tpl.getobject('POSITION.INSTRUMENTAL.FOCUS.OFFSET')
+            return tpl.getobject('POSITION.INSTRUMENTAL.FOCUS.OFFSET')
 
 
     @lock
     def getPosition(self):
 
-        #return self.getOffset()[Axis.Z]
-
-        if self['hexapod']:
-            pos = [0] * self['naxis']
-            for iax in range(self['naxis']):
-                pos[iax] = self._tpl.getobject('POSITION.INSTRUMENTAL.FOCUS[%i].REALPOS' % iax)
-            return pos
-        else:
-            return self._tpl.getobject('POSITION.INSTRUMENTAL.FOCUS.REALPOS')
+        return self.getOffset()[Axis.Z.index]
 
 
     def getRange(self, axis='Z'):
@@ -251,11 +220,12 @@ vector. Temperature compensation can also be performed.
         self.log.info("Changing focuser offset to %s" % n)
 
         cmdid = None
+        tpl = self.getTPL()
 
         if self['hexapod']:
-            cmdid = self._tpl.set('POSITION.INSTRUMENTAL.FOCUS[%i].OFFSET' % axis.index, n)
+            cmdid = tpl.set('POSITION.INSTRUMENTAL.FOCUS[%i].OFFSET' % axis.index, n)
         else:
-            cmdid = self._tpl.set('POSITION.INSTRUMENTAL.FOCUS.OFFSET', n)
+            cmdid = tpl.set('POSITION.INSTRUMENTAL.FOCUS.OFFSET', n)
 
         if not cmdid:
             msg = "Could not change focus offset to %f %s" % (position * self._step[ax.index],
@@ -263,17 +233,8 @@ vector. Temperature compensation can also be performed.
             self.log.error(msg)
             raise InvalidFocusPositionException(msg)
 
-        cmdComplete = False
-        while not cmdComplete:
-
-            for line in self._tpl.commands_sent[cmdid]['received']:
-                self.log.debug(line[:-1])
-                if line.find('COMPLETE') > 0:
-                    cmdComplete = True
-            time.sleep(1.0)
-
         # check limit state
-        LSTATE = self._tpl.getobject('POSITION.INSTRUMENTAL.FOCUS[%i].LIMIT_STATE' % axis.index)
+        LSTATE = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS[%i].LIMIT_STATE' % axis.index)
         #code = '%16s'%(bin(LSTATE)[2:][::-1])
         bitcode = [0, 1, 7, 8, 9, 15]
         LMESSG = ['MINIMUM HARDWARE LIMIT',
@@ -332,3 +293,13 @@ vector. Temperature compensation can also be performed.
                 ('UHEX', u, 'Hexapod u angle'),
                 ('VHEX', v, 'Hexapod v angle')]
 
+    # utilitaries
+    def getTPL(self):
+        try:
+            p = self.getManager().getProxy(self['tpl'], lazy=True)
+            if not p.ping():
+                return False
+            else:
+                return p
+        except ObjectNotFoundException:
+            return False
