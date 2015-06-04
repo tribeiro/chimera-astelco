@@ -135,17 +135,17 @@ class TPL(ChimeraObject):
 
         nrec = 0
 
-        try:
-            while recv[1]:
-                nrec+=1
-                self.log.debug(recv[2][:-1])
-                cmdid = int(recv[1].group('CMDID'))
-                if not cmdid in self.commands_sent.keys():
-                    self.log.warning('Received a bad command id %i. Skipping'%cmdid)
-                    return True
+        while recv[1]:
+            nrec+=1
+            self.log.debug(recv[2][:-1])
+            cmdid = int(recv[1].group('CMDID'))
+            if not cmdid in self.commands_sent.keys():
+                self.log.warning('Received a bad command id %i. Skipping'%cmdid)
+                return True
 
-                self.commands_sent[cmdid].received.append(recv[2][:-1])
+            self.commands_sent[cmdid].received.append(recv[2][:-1])
 
+            try:
                 if 'DATA INLINE' in recv[2]:
                     if '!TYPE' in recv[2]:
                         self.commands_sent[cmdid].dtype = _CmdType[recv[1].group('VALUE')]
@@ -165,11 +165,14 @@ class TPL(ChimeraObject):
                 incomplete = np.any(np.array([not cmd.complete for cmd in self.commands_sent.values()]))
                 if not incomplete:
                     break
+            except Exception,e:
+                self.log.error('[control] Error on command: %s'%(recv[2][:-1]))
+                self.commands_sent[cmdid].ok = False
+                self.commands_sent[cmdid].complete = True
+                self.log.exception(e)
+                pass
 
-                recv = self.expect()
-        except Exception,e:
-            self.log.exception(e)
-            return True
+            recv = self.expect()
 
         # Check size of commands and clear history
         while len(self.commands_sent) > int(self["history"]):
