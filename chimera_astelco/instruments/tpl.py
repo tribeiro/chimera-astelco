@@ -24,6 +24,7 @@ import os
 import numpy as np
 import telnetlib
 from collections import defaultdict
+import re
 
 from chimera.core.chimeraobject import ChimeraObject
 from chimera.core.lock import lock
