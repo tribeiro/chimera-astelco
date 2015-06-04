@@ -82,7 +82,7 @@ class TPL(ChimeraObject):
                   "tpl_port": 65432,
                   "user": 'admin',
                   "password": 'admin',
-                  "freq": 0.1,
+                  "freq": 2.,
                   "timeout": 60,
                   "waittime": 0.5,
                   "history" : 1000}
@@ -107,6 +107,7 @@ class TPL(ChimeraObject):
         self.commands_sent = {}
 
         self._expect = [ '(?P<CMDID>\d+) DATA INLINE (?P<OBJECT>\S+)=(?P<VALUE>\S+)\n',
+                         '(?P<CMDID>\d+) DATA OK (?P<OBJECT>\S+)\n',
                          '(?P<CMDID>\d+) COMMAND (?P<STATUS>\S+)\n',
                          '(?P<CMDID>\d+) EVENT ERROR (?P<OBJECT>\S+):(?P<ENCM>(.*?)\s*)\n']
 
@@ -152,9 +153,13 @@ class TPL(ChimeraObject):
             recvList = []
 
             if receivedlines > 1:
+                self.log.debug('[control] Received %i commands'%receivedlines)
+
                 buff = recv[2].split('\n')
-                for rec in buff:
+                for irec,rec in enumerate(buff):
+                    self.log.debug('[control] Cmd %i/%i: "%s"'%(irec,receivedlines,rec))
                     parse = None
+                    rec+='\n'
                     for exp in self._expect:
                         parse = re.search(exp,rec)
                         if parse:
