@@ -370,9 +370,9 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
             return TelescopeStatus.ERROR
 
-        self.log.debug('Wait cmd complete...')
-        status = self.waitCmd(cmdid, start_time, slew_time)
-        self.log.debug('Done')
+        # self.log.debug('Wait cmd complete...')
+        # status = self.waitCmd(cmdid, start_time, slew_time)
+        # self.log.debug('Done')
 
         if status != TelescopeStatus.OK:
             self.log.warning('Pointing operations failed with status: %s...' % status)
@@ -427,9 +427,9 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         self.log.debug('Wait for telescope to stabilize...')
         time.sleep(self["stabilization_time"])
 
-        self.log.debug('Wait cmd complete...')
-        status = self.waitCmd(cmdid, start_time, slew_time)
-        self.log.debug('Done')
+        # self.log.debug('Wait cmd complete...')
+        # status = self.waitCmd(cmdid, start_time, slew_time)
+        # self.log.debug('Done')
 
         self.log.debug('Wait slew to complete...')
 
@@ -464,35 +464,35 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         return status
 
 
-    def waitCmd(self, cmdid, start_time, op_time=-1):
-
-        if op_time < 0:
-            op_time = self["max_slew_time"] + 1
-
-        tpl = self.getTPL()
-        while not tpl.finished(cmdid):
-
-            if self._abort.isSet():
-                self._slewing = False
-                self.abortSlew()
-                self.slewComplete(self.getPositionRaDec(),
-                    TelescopeStatus.ABORTED)
-                return TelescopeStatus.ABORTED
-
-            # check timeout
-            if time.time() >= (start_time + self["max_slew_time"]):
-                self.abortSlew()
-                self._slewing = False
-                self.log.error('Slew aborted. Max slew time reached.')
-                raise AstelcoException("Slew aborted. Max slew time reached.")
-
-            if time.time() >= (start_time + op_time):
-                self.log.warning('Estimated slewtime has passed...')
-                op_time += op_time
-
-            time.sleep(self["slew_idle_time"])
-
-        return TelescopeStatus.OK
+    # def waitCmd(self, cmdid, start_time, op_time=-1):
+    #
+    #     if op_time < 0:
+    #         op_time = self["max_slew_time"] + 1
+    #
+    #     tpl = self.getTPL()
+    #     while not tpl.commands_sent[cmdid].complete:
+    #
+    #         if self._abort.isSet():
+    #             self._slewing = False
+    #             self.abortSlew()
+    #             self.slewComplete(self.getPositionRaDec(),
+    #                 TelescopeStatus.ABORTED)
+    #             return TelescopeStatus.ABORTED
+    #
+    #         # check timeout
+    #         if time.time() >= (start_time + self["max_slew_time"]):
+    #             self.abortSlew()
+    #             self._slewing = False
+    #             self.log.error('Slew aborted. Max slew time reached.')
+    #             raise AstelcoException("Slew aborted. Max slew time reached.")
+    #
+    #         if time.time() >= (start_time + op_time):
+    #             self.log.warning('Estimated slewtime has passed...')
+    #             op_time += op_time
+    #
+    #         time.sleep(self["slew_idle_time"])
+    #
+    #     return TelescopeStatus.OK
 
     def abortSlew(self):  # converted to Astelco
         if not self.isSlewing():
@@ -564,7 +564,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         self.log.debug('Wait cmd complete...')
         start_time = time.time()
         slew_time = self["stabilization_time"]
-        status = self.waitCmd(cmdid, start_time, slew_time)
+        # status = self.waitCmd(cmdid, start_time, slew_time)
 
         self.log.debug('SEND: POINTING.TRACK 1')
         cmdid = tpl.set('POINTING.TRACK', 1, wait=True)
@@ -573,9 +573,9 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         self.log.debug('Wait for telescope to stabilize...')
         time.sleep(self["stabilization_time"])
 
-        self.log.debug('Wait cmd complete...')
-        status = self.waitCmd(cmdid, start_time, slew_time)
-        self.log.debug('Done')
+        # self.log.debug('Wait cmd complete...')
+        # status = self.waitCmd(cmdid, start_time, slew_time)
+        # self.log.debug('Done')
 
         self.log.debug('Wait slew to complete...')
 
@@ -1177,7 +1177,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
             # writing GLOBAL status to CLEAR is how you acknowledge
             cmdid = tpl.set('TELESCOPE.STATUS.CLEAR', status)
             # if clear gets new value, acknowledge may have worked
-            self.waitCmd(cmdid, time.time(), self["maxidletime"])
+            # self.waitCmd(cmdid, time.time(), self["maxidletime"])
             # clear = self._tpl.getobject('TELESCOPE.STATUS.CLEAR')
             # if clear == status:
             #    self.log.debug("CLEAR accepted new value...")
