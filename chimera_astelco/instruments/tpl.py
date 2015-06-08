@@ -24,6 +24,7 @@ import os
 import numpy as np
 import telnetlib
 from collections import defaultdict
+import re
 
 from chimera.core.chimeraobject import ChimeraObject
 from chimera.core.lock import lock
@@ -81,7 +82,7 @@ class TPL(ChimeraObject):
                   "tpl_port": 65432,
                   "user": 'admin',
                   "password": 'admin',
-                  "freq": 0.1,
+                  "freq": 2.,
                   "timeout": 60,
                   "waittime": 0.5,
                   "history" : 1000}
@@ -104,6 +105,11 @@ class TPL(ChimeraObject):
 
         # Store received objects
         self.commands_sent = {}
+
+        self._expect = [ '(?P<CMDID>\d+) DATA INLINE (?P<OBJECT>\S+)=(?P<VALUE>\S+)\n',
+                         '(?P<CMDID>\d+) DATA OK (?P<OBJECT>\S+)\n',
+                         '(?P<CMDID>\d+) COMMAND (?P<STATUS>\S+)\n',
+                         '(?P<CMDID>\d+) EVENT ERROR (?P<OBJECT>\S+):(?P<ENCM>(.*?)\s*)\n']
 
 
     def __start__(self):
@@ -143,29 +149,57 @@ class TPL(ChimeraObject):
                 self.log.warning('Received a bad command id %i. Skipping'%cmdid)
                 return True
 
+            receivedlines = recv[2].count('\n')
+            recvList = []
+
+            if receivedlines > 1:
+                self.log.debug('[control] Received %i commands'%receivedlines)
+
+                buff = recv[2].split('\n')
+                for irec,rec in enumerate(buff):
+                    self.log.debug('[control] Cmd %i/%i: "%s"'%(irec,receivedlines,rec))
+                    parse = None
+                    rec+='\n'
+                    for exp in self._expect:
+                        parse = re.search(exp,rec)
+                        if parse:
+                            recvList.append((1,parse,rec))
+                            break
+                recv = recvList.pop(0)
+
             self.commands_sent[cmdid].received.append(recv[2][:-1])
 
-            if 'DATA INLINE' in recv[2]:
-                if '!TYPE' in recv[2]:
-                    self.commands_sent[cmdid].dtype = _CmdType[recv[1].group('VALUE')]
-                else:
-                    self.commands_sent[cmdid].data.append(self.commands_sent[cmdid].dtype(recv[1].group('VALUE').replace('"','')))
-            elif 'COMMAND' in recv[2]:
-                self.commands_sent[cmdid].status = recv[1].group('STATUS')
-                self.commands_sent[cmdid].allstatus.append(recv[1].group('STATUS'))
-                if self.commands_sent[cmdid].status == 'OK':
-                    self.commands_sent[cmdid].ok = True
-                elif self.commands_sent[cmdid].status == 'COMPLETE':
-                    self.commands_sent[cmdid].complete = True
+            try:
+                if 'DATA INLINE' in recv[2]:
+                    if '!TYPE' in recv[2]:
+                        self.commands_sent[cmdid].dtype = _CmdType[recv[1].group('VALUE')]
+                    else:
+                        self.commands_sent[cmdid].data.append(self.commands_sent[cmdid].dtype(recv[1].group('VALUE').replace('"','')))
+                elif 'COMMAND' in recv[2]:
+                    self.commands_sent[cmdid].status = recv[1].group('STATUS')
+                    self.commands_sent[cmdid].allstatus.append(recv[1].group('STATUS'))
+                    if self.commands_sent[cmdid].status == 'OK':
+                        self.commands_sent[cmdid].ok = True
+                    elif self.commands_sent[cmdid].status == 'COMPLETE':
+                        self.commands_sent[cmdid].complete = True
 
-            elif 'EVENT ERROR' in recv[2]:
-                self.commands_sent[cmdid].events.append(recv[1].group('ENCM'))
+                elif 'EVENT ERROR' in recv[2]:
+                    self.commands_sent[cmdid].events.append(recv[1].group('ENCM'))
+
+            except Exception,e:
+                self.log.error('[control] Error on command: %s'%(recv[2][:-1]))
+                self.commands_sent[cmdid].ok = False
+                self.commands_sent[cmdid].complete = True
+                self.log.exception(e)
+                pass
 
             incomplete = np.any(np.array([not cmd.complete for cmd in self.commands_sent.values()]))
-            if not incomplete:
+            if not incomplete and len(recvList) == 0:
                 break
-
-            recv = self.expect()
+            elif len(recvList) > 0:
+                recv = recvList.pop(0)
+            else:
+                recv = self.expect()
 
         # Check size of commands and clear history
         while len(self.commands_sent) > int(self["history"]):
@@ -183,9 +217,7 @@ class TPL(ChimeraObject):
 
     def expect(self):
 
-        return self.sock.expect(['(?P<CMDID>\d+) DATA INLINE (?P<OBJECT>\S+)=(?P<VALUE>\S+)\n',
-                                 '(?P<CMDID>\d+) COMMAND (?P<STATUS>\S+)\n',
-                                 '(?P<CMDID>\d+) EVENT ERROR (?P<OBJECT>\S+):(?P<ENCM>(.*?)\s*)\n'],
+        return self.sock.expect(self._expect,
                                 timeout=self['timeout'])
 
     @lock
