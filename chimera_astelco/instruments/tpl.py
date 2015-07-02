@@ -332,6 +332,8 @@ class TPL(ChimeraObject):
 
     def set(self, object, value, wait=False, binary=False):
 
+        cmid = None
+        
         if not binary:
             obj = object + '=' + str(value)
             cmid = self.sendcomm('SET', obj)
@@ -343,7 +345,7 @@ class TPL(ChimeraObject):
             start = time.time()
             while not self.commands_sent[cmid].status == "COMPLETE":
                 if  time.time() > start+self['timeout']:
-                    self.log.warning('Command %i timed out...'%(ret))
+                    self.log.warning('Command %i timed out...'%(cmdid))
                     break
                 continue
 
