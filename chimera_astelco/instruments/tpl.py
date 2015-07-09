@@ -106,10 +106,10 @@ class TPL(ChimeraObject):
         # Store received objects
         self.commands_sent = {}
 
-        self._expect = [ '(?P<CMDID>\d+) DATA INLINE (?P<OBJECT>\S+)=(?P<VALUE>\S+)\n',
-                         '(?P<CMDID>\d+) DATA OK (?P<OBJECT>\S+)\n',
-                         '(?P<CMDID>\d+) COMMAND (?P<STATUS>\S+)\n',
-                         '(?P<CMDID>\d+) EVENT ERROR (?P<OBJECT>\S+):(?P<ENCM>(.*?)\s*)\n']
+        self._expect = [ '(?P<CMDID>\d+) DATA INLINE (?P<OBJECT>\S+)=(?P<VALUE>\S+)',
+                         '(?P<CMDID>\d+) DATA OK (?P<OBJECT>\S+)',
+                         '(?P<CMDID>\d+) COMMAND (?P<STATUS>\S+)',
+                         '(?P<CMDID>\d+) EVENT ERROR (?P<OBJECT>\S+):(?P<ENCM>(.*?)\s*)']
 
 
     def __start__(self):
@@ -134,40 +134,25 @@ class TPL(ChimeraObject):
         incomplete = np.any(np.array([not cmd.complete for cmd in self.commands_sent.values()]))
         if incomplete:
             self.log.debug('[control] TPL has incomplete commands')
+            for cmd in self.commands_sent.values():
+                if not cmd.complete:
+                    self.log.debug('[control] Command %i not complete'%cmd.id)
         else:
             return True
 
-        recv = self.expect()
+        exp_recv = self.expect()
+        self.log.debug('[control] Received %i commands'%len(exp_recv))
 
-        nrec = 0
+        for i in range(len(exp_recv)):
+            recv = exp_recv[i]
 
-        while recv[1]:
-            nrec+=1
-            self.log.debug(recv[2][:-1])
+            self.log.debug(recv[2])
             cmdid = int(recv[1].group('CMDID'))
             if not cmdid in self.commands_sent.keys():
                 self.log.warning('Received a bad command id %i. Skipping'%cmdid)
-                return True
+                continue
 
-            receivedlines = recv[2].count('\n')
-            recvList = []
-
-            if receivedlines > 1:
-                self.log.debug('[control] Received %i commands'%receivedlines)
-
-                buff = recv[2].split('\n')
-                for irec,rec in enumerate(buff):
-                    self.log.debug('[control] Cmd %i/%i: "%s"'%(irec,receivedlines,rec))
-                    parse = None
-                    rec+='\n'
-                    for exp in self._expect:
-                        parse = re.search(exp,rec)
-                        if parse:
-                            recvList.append((1,parse,rec))
-                            break
-                recv = recvList.pop(0)
-
-            self.commands_sent[cmdid].received.append(recv[2][:-1])
+            self.commands_sent[cmdid].received.append(recv[2])
 
             try:
                 if 'DATA INLINE' in recv[2]:
@@ -193,13 +178,7 @@ class TPL(ChimeraObject):
                 self.log.exception(e)
                 pass
 
-            incomplete = np.any(np.array([not cmd.complete for cmd in self.commands_sent.values()]))
-            if not incomplete and len(recvList) == 0:
-                break
-            elif len(recvList) > 0:
-                recv = recvList.pop(0)
-            else:
-                recv = self.expect()
+            # incomplete = np.any(np.array([not cmd.complete for cmd in self.commands_sent.values()]))
 
         # Check size of commands and clear history
         while len(self.commands_sent) > int(self["history"]):
@@ -217,8 +196,29 @@ class TPL(ChimeraObject):
 
     def expect(self):
 
-        return self.sock.expect(self._expect,
-                                timeout=self['timeout'])
+        buff = ''
+        recv = None
+        while recv != '':
+            recv = self.sock.read_very_eager()
+            buff+=recv
+
+        buff = buff.split('\n')
+        ret = []
+
+        for line in buff:
+
+            if len(line) < 1:
+                continue
+            for exp in self._expect:
+                re_exp = re.search(exp,line)
+                if re_exp:
+                    ret.append((0,re_exp,line))
+                    break
+
+        return ret
+        #return buff
+        #return self.sock.expect(self._expect,
+        #                        timeout=self['timeout'])
 
     @lock
     def open(self):  # converted to Astelco
@@ -281,6 +281,13 @@ class TPL(ChimeraObject):
         self.next_command_id+=1
         return ocmid
 
+    def getCmd(self,cmdid):
+        if cmdid in self.commands_sent.keys():
+            return self.commands_sent[cmdid]
+        else:
+            self.log.warning('cmdid %s does not exists.'%cmdid)
+            return None
+
     def sendcomm(self, comm, object):
 
         cmd = Command()
@@ -311,7 +318,14 @@ class TPL(ChimeraObject):
             self.sock.write('%s'%message)
         except Exception, e:
             self.log.exception(e)
-            return SEND.ERROR
+            self.log.warning('Reseting connection...')
+            self.close()
+            self.open()
+            try:
+                self.sock.write('%s'%message)
+            except Exception, e:
+                self.log.exception(e)
+                return SEND.ERROR
 
         return SEND.OK
 
@@ -333,7 +347,7 @@ class TPL(ChimeraObject):
     def set(self, object, value, wait=False, binary=False):
 
         cmid = None
-        
+
         if not binary:
             obj = object + '=' + str(value)
             cmid = self.sendcomm('SET', obj)

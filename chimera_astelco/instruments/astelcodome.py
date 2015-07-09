@@ -22,6 +22,7 @@
 import os
 import time
 import threading
+import copy
 
 from chimera.util.coord import Coord
 
@@ -258,7 +259,7 @@ class AstelcoDome(DomeBase):
 
         if self._slitMoving:
             raise AstelcoException('Slit already opening...')
-        elif self._slitOpen:
+        elif self.isSlitOpen():
             self.log.info('Slit already opened...')
             return 0
 
@@ -266,52 +267,77 @@ class AstelcoDome(DomeBase):
         self._abort.clear()
         tpl = self.getTPL()
 
-        cmdid = tpl.set('AUXILIARY.DOME.TARGETPOS', 1, wait=True)
+        cmdid = tpl.set('AUXILIARY.DOME.TARGETPOS', 1, wait=False)
 
         time_start = time.time()
 
+        cmd = tpl.getCmd(cmdid)
         cmdComplete = False
-        while True:
+        while not cmd.complete:
 
-            realpos = tpl.getobject('AUXILIARY.DOME.REALPOS')
-
-            if tpl.commands_sent[cmdid].complete and ( (not realpos == 1) and (not cmdComplete) ):
-                    self.log.warning('Slit opened! Opening Flap...')
-                    cmdid = self._tpl.set('AUXILIARY.DOME.TARGETPOS', 1, wait=True)
-                    cmdComplete = True
-                    time_start = time.time()
-
-            if realpos == 1:
-                self._slitMoving = False
-                self._slitOpen = True
-                return DomeStatus.OK
-            elif self._abort.isSet():
+            if self._abort.isSet():
                 self._slitMoving = False
                 return DomeStatus.ABORTED
             elif time.time() > time_start + self._maxSlewTime:
                 return DomeStatus.TIMEOUT
 
-        return True
+            cmd = tpl.getCmd(cmdid)
+
+
+        realpos = tpl.getobject('AUXILIARY.DOME.REALPOS')
+
+        if realpos == 1:
+            return DomeStatus.OK
+
+        self.log.warning('Slit opened! Opening Flap...')
+
+        cmdid = tpl.set('AUXILIARY.DOME.TARGETPOS', 1, wait=False)
+        cmd = tpl.getCmd(cmdid)
+
+        time_start = time.time()
+
+        while not cmd.complete:
+
+            if self._abort.isSet():
+                self._slitMoving = False
+                return DomeStatus.ABORTED
+            elif time.time() > time_start + self._maxSlewTime:
+                return DomeStatus.TIMEOUT
+
+            cmd = tpl.getCmd(cmdid)
+
+        realpos = tpl.getobject('AUXILIARY.DOME.REALPOS')
+
+        if realpos == 1:
+            return DomeStatus.OK
+        else:
+            return DomeStatus.ABORTED
+
+        # return DomeStatus.OK
 
     @lock
     def closeSlit(self):
-        if not self._slitOpen:
+        if not self.isSlitOpen():
             self.log.info('Slit already closed')
             return 0
 
         self.log.info("Closing slit")
 
         tpl = self.getTPL()
-        cmdid = tpl.set('AUXILIARY.DOME.TARGETPOS', 0)
+
+        realpos = tpl.getobject('AUXILIARY.DOME.REALPOS')
+
+        cmdid = tpl.set('AUXILIARY.DOME.TARGETPOS', 0,wait=False)
 
         time_start = time.time()
 
-        while True:
+        cmd = tpl.getCmd(cmdid)
 
-            for line in tpl.commands_sent[cmdid].received:
-                self.log.debug(line)
+        while not cmd.complete:
 
-            realpos = tpl.getobject('AUXILIARY.DOME.REALPOS')
+            # for line in tpl.commands_sent[cmdid].received:
+            #     self.log.debug(line)
+
             if realpos == 0:
                 self._slitMoving = False
                 self._slitOpen = False
@@ -322,6 +348,21 @@ class AstelcoDome(DomeBase):
             elif time.time() > time_start + self._maxSlewTime:
                 return DomeStatus.TIMEOUT
 
+            cmd = tpl.getCmd(cmdid)
+
+        realpos = tpl.getobject('AUXILIARY.DOME.REALPOS')
+
+        while realpos != 0:
+
+            if self._abort.isSet():
+                self._slitMoving = False
+                return DomeStatus.ABORTED
+            elif time.time() > time_start + self._maxSlewTime:
+                return DomeStatus.TIMEOUT
+
+            realpos = tpl.getobject('AUXILIARY.DOME.REALPOS')
+
+        return DomeStatus.OK
 
     def isSlitOpen(self):
         tpl = self.getTPL()
