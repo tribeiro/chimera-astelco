@@ -25,6 +25,8 @@ import datetime as dt
 # from types import FloatType
 import os
 
+import numpy as np
+
 try:
     import cPickle as pickle
 except ImportError:
@@ -360,7 +362,34 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         cmd = tpl.getCmd(cmdid)
 
         # time_sent = time.time()
-        # while not cmd.ok:
+        while not cmd.complete:
+            if self._abort.isSet():
+                self._slewing = False
+                self.abortSlew()
+                self.slewComplete(self.getPositionRaDec(),
+                    TelescopeStatus.ABORTED)
+                return TelescopeStatus.ABORTED
+
+            # check timeout
+            if time.time() >= (start_time + self["max_slew_time"]):
+                self.abortSlew()
+                self._slewing = False
+                self.log.error('Slew aborted. Max slew time reached.')
+                raise AstelcoException("Slew aborted. Max slew time reached.")
+
+            if time.time() >= (start_time + slew_time):
+                self.log.warning('Estimated slewtime has passed...')
+                position = self.getPositionRaDec()
+                if local:
+                    position = self.getPositionAltAz()
+                angsep = target.angsep(position)
+                self.log.debug('Target: %s | Position: %s | Distance: %s' % (target, position, angsep))
+
+                slew_time += slew_time
+
+            # time.sleep(self["slew_idle_time"])
+            cmd = tpl.getCmd(cmdid)
+
         #     time.sleep(self["slew_idle_time"])
         #     if time.time() > time_sent+self["max_slew_time"]:
         #         break
@@ -560,9 +589,11 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         tpl = self.getTPL()
 
         if direction == Direction.W:
-            cmdid = tpl.set('POSITION.INSTRUMENTAL.HA.OFFSET', current_offset + offset / 60. / 60., wait=True)
+            off = current_offset + offset / 60. / 60. * np.cos(self.getDec().R)
+            cmdid = tpl.set('POSITION.INSTRUMENTAL.HA.OFFSET', off, wait=True)
         elif direction == Direction.E:
-            cmdid = tpl.set('POSITION.INSTRUMENTAL.HA.OFFSET', current_offset - offset / 60. / 60., wait=True)
+            off = current_offset - offset / 60. / 60. * np.cos(self.getDec().R)
+            cmdid = tpl.set('POSITION.INSTRUMENTAL.HA.OFFSET', off, wait=True)
         elif direction == Direction.N:
             cmdid = tpl.set('POSITION.INSTRUMENTAL.DEC.OFFSET', current_offset + offset / 60. / 60., wait=True)
         elif direction == Direction.S:
