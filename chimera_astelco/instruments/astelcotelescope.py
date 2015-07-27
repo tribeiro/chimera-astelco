@@ -103,6 +103,8 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         self._calibrationFile = os.path.join(
             SYSTEM_CONFIG_DIRECTORY, "move_calibration.bin")
 
+        self.sensors = []
+
         for rate in SlewRate:
             self._calibration[rate] = {}
             for direction in Direction:
@@ -191,8 +193,9 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
             return True
 
-        except (SocketError, IOError):
-            raise AstelcoException("Error while opening %s." % self["device"])
+        except Exception, e:
+            raise AstelcoException("Error while opening %s. Error message:\n%s" % (self["device"],
+                                                                                   e))
 
     @lock
     def control(self):
@@ -218,6 +221,13 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
             # What should be done? Try to acknowledge and if that fails do what?
         else:
             return False
+
+        # Update sensor and coordinate information
+        self.updateSensors()
+        self.getRa()
+        self.getDec()
+        self.getAlt()
+        self.getAz()
 
         return True
 
@@ -610,66 +620,33 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         # status = self.waitCmd(cmdid, start_time, slew_time)
 
         self.log.debug('SEND: POINTING.TRACK 1')
-        cmdid = tpl.set('POINTING.TRACK', 1, wait=True)
+        cmdid = tpl.set('POINTING.TRACK', 1, wait=False)
         self.log.debug('PASSED')
 
-        self.log.debug('Wait for telescope to stabilize...')
-        time.sleep(self["stabilization_time"])
+        # self.log.debug('Wait for telescope to stabilize...')
+        # time.sleep(self["stabilization_time"])
 
-        # self.log.debug('Wait cmd complete...')
+        self.log.debug('Wait cmd completion...')
+        cmd = tpl.getCmd(cmdid)
+
+        # time_sent = time.time()
+        while not cmd.complete:
+            status = self._waitSlewLoop(start_time,slew_time)
+            cmd = tpl.getCmd(cmdid)
+
         # status = self.waitCmd(cmdid, start_time, slew_time)
         # self.log.debug('Done')
+        if status == TelescopeStatus.OK:
+            return True
+        else:
+            return False
 
-        self.log.debug('Wait slew to complete...')
 
-        time.sleep(self["slew_idle_time"])
+    def _stopMove(self, direction):
 
-        while self._isSlewing():
-
-            if self._abort.isSet():
-                self._slewing = False
-                self.abortSlew()
-                self.slewComplete(self.getPositionRaDec(),
-                    TelescopeStatus.ABORTED)
-                return TelescopeStatus.ABORTED
-
-            # check timeout
-            if time.time() >= (start_time + self["max_slew_time"]):
-                self.abortSlew()
-                self._slewing = False
-                self.log.error('Slew aborted. Max slew time reached.')
-                raise AstelcoException("Slew aborted. Max slew time reached.")
-
-            if time.time() >= (start_time + slew_time):
-                self.log.warning('Estimated slewtime has passed...')
-                slew_time += slew_time
-
-            time.sleep(self["slew_idle_time"])
-
-        self.log.debug('Wait for telescope to stabilize...')
-        time.sleep(self["stabilization_time"])
+        self.stopMoveAll()
 
         return True
-
-    def _stopMove(self, direction):  # yet to convert to Astelco
-        #self._write (":Q%s#" % str(direction).lower())
-        rate = self.getSlewRate()
-        # FIXME: stabilization time depends on the slewRate!!!
-        if rate == SlewRate.GUIDE:
-            time.sleep(0.1)
-            return True
-
-        elif rate == SlewRate.CENTER:
-            time.sleep(0.2)
-            return True
-
-        elif rate == SlewRate.FIND:
-            time.sleep(0.3)
-            return True
-
-        elif rate == SlewRate.MAX:
-            time.sleep(0.4)
-            return True
 
     def isMoveCalibrated(self):  # no need to convert to Astelco
         return os.path.exists(self._calibrationFile)
@@ -769,6 +746,14 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         return True
 
     @lock
+    def _getRa(self):
+        return self._ra
+
+    @lock
+    def _getDec(self):
+        return self._dec
+
+    @lock
     def getRa(self):  # converted to Astelco
 
         tpl = self.getTPL()
@@ -860,6 +845,23 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         ret = tpl.getobject('OBJECT.EQUATORIAL.DEC')
 
         return Coord.fromD(ret)
+
+    @lock
+    def _getAz(self):  # converted to Astelco
+
+        c = self._az  #Coord.fromD(ret)
+
+        if self['azimuth180Correct']:
+            if c.toD() >= 180:
+                c = c - Coord.fromD(180)
+            else:
+                c = c + Coord.fromD(180)
+
+        return c
+
+    @lock
+    def _getAlt(self):  # converted to Astelco
+        return self._alt
 
     @lock
     def getAz(self):  # converted to Astelco
@@ -1414,8 +1416,13 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         return tpl.commands_sent
 
     def getSensors(self):
+        return self.sensors
 
-        sensors = []
+    @lock
+    def updateSensors(self):
+
+        sensors = [('SENSTIME',dt.datetime.now().time(),"Last time sensors where updated.")]
+
         tpl = self.getTPL()
 
         for n in range(int(self["sensors"])):
@@ -1431,7 +1438,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
             sensors.append((description, value, unit))
             sensors.append((0, 0, 0))
 
-        return sensors
+        self.sensors = sensors
 
     def getMetadata(self, request):
         return [('TELESCOP', self['model'], 'Telescope Model'),
@@ -1444,20 +1451,20 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
                  'Telescope focal reduction'),
                 # TODO: Convert coordinates to proper equinox
                 # TODO: How to get ra,dec at start of exposure (not end)
-                ('RA', self.getRa().toHMS().__str__(),
+                ('RA', self._getRa().toHMS().__str__(),
                  'Right ascension of the observed object'),
-                ('DEC', self.getDec().toDMS().__str__(),
+                ('DEC', self._getDec().toDMS().__str__(),
                  'Declination of the observed object'),
                 ("EQUINOX", 2000.0, "coordinate epoch"),
-                ('ALT', self.getAlt().toDMS().__str__(),
+                ('ALT', self._getAlt().toDMS().__str__(),
                  'Altitude of the observed object'),
-                ('AZ', self.getAz().toDMS().__str__(),
+                ('AZ', self._getAz().toDMS().__str__(),
                  'Azimuth of the observed object'),
                 ("WCSAXES", 2, "wcs dimensionality"),
                 ("RADESYS", "ICRS", "frame of reference"),
-                ("CRVAL1", self.getTargetRaDec().ra.D,
+                ("CRVAL1", self._getRa().ra.D,
                  "coordinate system value at reference pixel"),
-                ("CRVAL2", self.getTargetRaDec().dec.D,
+                ("CRVAL2", self._getDec().dec.D,
                  "coordinate system value at reference pixel"),
                 ("CTYPE1", 'RA---TAN', "name of the coordinate axis"),
                 ("CTYPE2", 'DEC---TAN', "name of the coordinate axis"),
