@@ -191,6 +191,13 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
             else:
                 self._initTelescope()
 
+            # Update sensors and position
+            self.updateSensors()
+            self.getRa()
+            self.getDec()
+            self.getAlt()
+            self.getAz()
+
             return True
 
         except Exception, e:
