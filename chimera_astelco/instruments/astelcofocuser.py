@@ -19,7 +19,8 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 import os
-import time
+# import time
+import collections
 import threading
 
 from chimera.interfaces.focuser import (InvalidFocusPositionException,
@@ -44,6 +45,7 @@ class AstelcoHexapodException(ChimeraException):
 Direction = Enum("IN", "OUT")
 Axis = Enum("X", "Y", "Z", "U", "V")  # For hexapod
 
+FocusPosition = collections.namedtuple('Focus','X Y Z U V')
 
 class AstelcoFocuser(FocuserBase):
     '''
@@ -67,7 +69,7 @@ vector. Temperature compensation can also be performed.
                           FocuserFeature.POSITION_FEEDBACK: True,
                           FocuserFeature.ENCODER: True}
 
-        self._position = [0] * self['naxis']
+        self._position = [0.] * self['naxis']
         self._range = [None] * self['naxis']
         self._step = [None] * self['naxis']
         self._lastTimeLog = None
@@ -95,6 +97,7 @@ vector. Temperature compensation can also be performed.
             for ax in Axis:
                 min = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS[%i].REALPOS!MIN' % ax.index)
                 max = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS[%i].REALPOS!MAX' % ax.index)
+                self._position[ax.index] = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS[%i].REALPOS' % ax.index)
 
                 # step = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS[%i].STEP' % ax.index)
                 try:
@@ -116,6 +119,7 @@ vector. Temperature compensation can also be performed.
             max = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS.REALPOS!MAX')
             self._range[Axis.Z.index] = (min, max)
             self._step[Axis.Z.index] = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS.STEP')
+            self._position[Axis.Z.index] = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS.REALPOS')
 
         self.setHz(1. / self["maxidletime"])
 
@@ -198,15 +202,21 @@ vector. Temperature compensation can also be performed.
                                                                  self["unit"]))
 
     @lock
+    def _getStoredRealPosition(self):
+
+        return self._position
+
+    @lock
     def _getRealPosition(self):
         tpl = self.getTPL()
         if self['hexapod']:
-            pos = [0] * self['naxis']
+            # pos = [0] * self['naxis']
             for iax in range(self['naxis']):
-                pos[iax] = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS.REALPOS[%i]' % iax)
-            return pos
+                self._position[iax] = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS.REALPOS[%i]' % iax)
+            return self._position
         else:
-            return tpl.getobject('POSITION.INSTRUMENTAL.FOCUS.REALPOS')
+            self._position[Axis.Z.index] = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS.REALPOS')
+            return self._position[Axis.Z.index]
 
     @lock
     def getOffset(self):
