@@ -95,18 +95,22 @@ vector. Temperature compensation can also be performed.
             for ax in Axis:
                 min = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS[%i].REALPOS!MIN' % ax.index)
                 max = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS[%i].REALPOS!MAX' % ax.index)
+
                 # step = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS[%i].STEP' % ax.index)
                 try:
-                    min = int(min)
-                except:
+                    min = float(min)
+                except Exception, e:
+                    self.log.debug('Could not determine minimum of axis %s:\n %s'%(ax,e))
                     min = -999
                 try:
-                    max = int(max)
-                except:
+                    max = float(max)
+                except Exception, e:
+                    self.log.debug('Could not determine maximum of axis %s:\n %s'%(ax,e))
                     max = 999
 
                 self._range[ax.index] = (min, max)
                 self._step[ax.index] = self["step"]
+
         else:
             min = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS.REALPOS!MIN')
             max = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS.REALPOS!MAX')
@@ -199,10 +203,10 @@ vector. Temperature compensation can also be performed.
         if self['hexapod']:
             pos = [0] * self['naxis']
             for iax in range(self['naxis']):
-                pos[iax] = tpl.getobject('POSITION.INSTRUMENTAL.REALPOS[%i].OFFSET' % iax)
+                pos[iax] = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS.REALPOS[%i]' % iax)
             return pos
         else:
-            return tpl.getobject('POSITION.INSTRUMENTAL.REALPOS.OFFSET')
+            return tpl.getobject('POSITION.INSTRUMENTAL.FOCUS.REALPOS')
 
     @lock
     def getOffset(self):
@@ -220,7 +224,7 @@ vector. Temperature compensation can also be performed.
     @lock
     def getPosition(self):
 
-        return self.getOffset()[Axis.Z.index]
+        return self._getRealPosition()[Axis.Z.index]
 
 
     def getRange(self, axis='Z'):
@@ -238,7 +242,7 @@ vector. Temperature compensation can also be performed.
             cmdid = tpl.set('POSITION.INSTRUMENTAL.FOCUS.OFFSET', n)
 
         if not cmdid:
-            msg = "Could not change focus offset to %f %s" % (position * self._step[ax.index],
+            msg = "Could not change focus offset to %f %s" % (n * self._step[axis.index],
                                                               self["unit"])
             self.log.error(msg)
             raise InvalidFocusPositionException(msg)
@@ -295,7 +299,7 @@ vector. Temperature compensation can also be performed.
 
     def getMetadata(self, request):
         if self['hexapod']:
-            x, y, z, u, v = self._getRealPosition()
+            x, y, z, u, v = self._getStoredRealPosition()
             return [('FOCUSER', str(self['model']), 'Focuser Model'),
                     ('XHEX', x, 'Hexapod x position'),
                     ('YHEX', y, 'Hexapod y position'),
@@ -304,7 +308,7 @@ vector. Temperature compensation can also be performed.
                     ('UHEX', u, 'Hexapod u angle'),
                     ('VHEX', v, 'Hexapod v angle')]
         else:
-            z = self._getRealPosition()
+            z = self._getStoredRealPosition()
             return [('FOCUSER', str(self['model']), 'Focuser Model'),
                     ('FOCUS', z,
                      'Focuser position used for this observation')]

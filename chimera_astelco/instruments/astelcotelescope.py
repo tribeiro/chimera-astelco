@@ -1484,7 +1484,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
                  "coordinate system value at reference pixel"),
                 ("CRVAL2", self._getDec().D,
                  "coordinate system value at reference pixel"),
-                ("CTYPE1", 'RA--TAN', "name of the coordinate axis"),
-                ("CTYPE2", 'DEC---TAN', "name of the coordinate axis"),
+                ("CTYPE1", 'RA---TAN', "name of the coordinate axis"),
+                ("CTYPE2", 'DEC--TAN', "name of the coordinate axis"),
                 ("CUNIT1", 'deg', "units of coordinate value"),
                 ("CUNIT2", 'deg', "units of coordinate value")] + self.getSensors()
