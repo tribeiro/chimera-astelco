@@ -93,8 +93,8 @@ vector. Temperature compensation can also be performed.
         # range and step setting
         if self['hexapod']:
             for ax in Axis:
-                min = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS[%i].OFFSET!MIN' % ax.index)
-                max = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS[%i].OFFSET!MAX' % ax.index)
+                min = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS[%i].REALPOS!MIN' % ax.index)
+                max = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS[%i].REALPOS!MAX' % ax.index)
                 # step = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS[%i].STEP' % ax.index)
                 try:
                     min = int(min)
@@ -108,8 +108,8 @@ vector. Temperature compensation can also be performed.
                 self._range[ax.index] = (min, max)
                 self._step[ax.index] = self["step"]
         else:
-            min = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS.CURRPOS!MIN')
-            max = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS.CURRPOS!MAX')
+            min = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS.REALPOS!MIN')
+            max = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS.REALPOS!MAX')
             self._range[Axis.Z.index] = (min, max)
             self._step[Axis.Z.index] = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS.STEP')
 
@@ -192,6 +192,17 @@ vector. Temperature compensation can also be performed.
             raise InvalidFocusPositionException("%f %s is outside focuser "
                                                 "boundaries." % (position * self._step[ax.index],
                                                                  self["unit"]))
+
+    @lock
+    def _getRealPosition(self):
+        tpl = self.getTPL()
+        if self['hexapod']:
+            pos = [0] * self['naxis']
+            for iax in range(self['naxis']):
+                pos[iax] = tpl.getobject('POSITION.INSTRUMENTAL.REALPOS[%i].OFFSET' % iax)
+            return pos
+        else:
+            return tpl.getobject('POSITION.INSTRUMENTAL.REALPOS.OFFSET')
 
     @lock
     def getOffset(self):
@@ -283,14 +294,20 @@ vector. Temperature compensation can also be performed.
             raise AstelcoHexapodException('Direction not valid! Try one of %s' % ldir)
 
     def getMetadata(self, request):
-        x, y, z, u, v = self.getPosition()
-        return [('FOCUSER', str(self['model']), 'Focuser Model'),
-                ('XHEX', x, 'Hexapod x position'),
-                ('YHEX', y, 'Hexapod y position'),
-                ('FOCUS', z,
-                 'Focuser position used for this observation'),
-                ('UHEX', u, 'Hexapod u angle'),
-                ('VHEX', v, 'Hexapod v angle')]
+        if self['hexapod']:
+            x, y, z, u, v = self._getRealPosition()
+            return [('FOCUSER', str(self['model']), 'Focuser Model'),
+                    ('XHEX', x, 'Hexapod x position'),
+                    ('YHEX', y, 'Hexapod y position'),
+                    ('FOCUS', z,
+                     'Focuser position used for this observation'),
+                    ('UHEX', u, 'Hexapod u angle'),
+                    ('VHEX', v, 'Hexapod v angle')]
+        else:
+            z = self._getRealPosition()
+            return [('FOCUSER', str(self['model']), 'Focuser Model'),
+                    ('FOCUS', z,
+                     'Focuser position used for this observation')]
 
     # utilitaries
     def getTPL(self):
