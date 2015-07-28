@@ -754,10 +754,15 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
     @lock
     def _getRa(self):
+        if not self._ra:
+            return self.getRa()
         return self._ra
 
     @lock
     def _getDec(self):
+        if not self._dec:
+            return self.getDec()
+
         return self._dec
 
     @lock
@@ -856,6 +861,9 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
     @lock
     def _getAz(self):  # converted to Astelco
 
+        if not self._az:
+            return self.getAz()
+
         c = self._az  #Coord.fromD(ret)
 
         if self['azimuth180Correct']:
@@ -868,6 +876,9 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
     @lock
     def _getAlt(self):  # converted to Astelco
+        if not self._alt:
+            return self.getAlt()
+
         return self._alt
 
     @lock
