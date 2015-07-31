@@ -596,26 +596,30 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
     def _move(self, direction, offset, slewRate=SlewRate.GUIDE):  # yet to convert to Astelco
 
+        if offset.D > 2.0:
+            raise AstelcoException("Offset %.2f %s too large!"%(offset.D,direction))
+
         current_offset = self._getOffset(direction)
 
         self._slewing = True
         cmdid = 0
 
-        self.log.debug('Current offset: %s | Requested: %s' % (current_offset, offset / 60. / 60.))
+        self.log.debug('Current offset: %s | Requested: %s' % (current_offset, offset))
 
         tpl = self.getTPL()
 
         if direction == Direction.W:
-            off = current_offset + offset / 60. / 60. * np.cos(self.getDec().R)
+            off = current_offset + offset.D * np.cos(self.getDec().R)
             cmdid = tpl.set('POSITION.INSTRUMENTAL.HA.OFFSET', off, wait=True)
         elif direction == Direction.E:
-            off = current_offset - offset / 60. / 60. * np.cos(self.getDec().R)
+            off = current_offset - offset.D  * np.cos(self.getDec().R)
             cmdid = tpl.set('POSITION.INSTRUMENTAL.HA.OFFSET', off, wait=True)
         elif direction == Direction.N:
-            cmdid = tpl.set('POSITION.INSTRUMENTAL.DEC.OFFSET', current_offset + offset / 60. / 60., wait=True)
+            cmdid = tpl.set('POSITION.INSTRUMENTAL.DEC.OFFSET', current_offset + offset.D, wait=True)
         elif direction == Direction.S:
-            cmdid = tpl.set('POSITION.INSTRUMENTAL.DEC.OFFSET', current_offset - offset / 60. / 60., wait=True)
+            cmdid = tpl.set('POSITION.INSTRUMENTAL.DEC.OFFSET', current_offset - offset.D, wait=True)
         else:
+            self._slewing = False
             return True
 
         self.log.debug('Wait for telescope to stabilize...')
@@ -637,17 +641,49 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         cmd = tpl.getCmd(cmdid)
 
         # time_sent = time.time()
-        while not cmd.complete:
-            status = self._waitSlewLoop(start_time,slew_time)
-            cmd = tpl.getCmd(cmdid)
+        # while not cmd.complete:
+        status = self._waitSlewLoop(cmdid,start_time,slew_time)
+            # cmd = tpl.getCmd(cmdid)
 
         # status = self.waitCmd(cmdid, start_time, slew_time)
         # self.log.debug('Done')
+        self._slewing = False
+
         if status == TelescopeStatus.OK:
             return True
         else:
             return False
 
+    def _waitSlewLoop(self,cmdid,start_time,slew_time=None):
+
+        tpl = self.getTPL()
+        cmd = tpl.getCmd(cmdid)
+
+        while not cmd.complete:
+
+            if self._abort.isSet():
+                self._slewing = False
+                self.abortSlew()
+                self.slewComplete(self.getPositionRaDec(),
+                    TelescopeStatus.ABORTED)
+                return TelescopeStatus.ABORTED
+
+            # check timeout
+            if time.time() >= (start_time + self["max_slew_time"]):
+                self.abortSlew()
+                self._slewing = False
+                self.log.error('Slew aborted. Max slew time reached.')
+                raise AstelcoException("Slew aborted. Max slew time reached.")
+
+            if slew_time and time.time() >= (start_time + slew_time):
+                self.log.warning('Estimated slewtime has passed...')
+                slew_time += slew_time
+
+            # time.sleep(self["slew_idle_time"])
+            cmd = tpl.getCmd(cmdid)
+        time.sleep(self["stabilization_time"])
+
+        return TelescopeStatus.OK
 
     def _stopMove(self, direction):
 
@@ -749,7 +785,8 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
     @lock
     def stopMoveAll(self):  # converted to Astelco
-        self._tpl.set('TELESCOPE.STOP', 1, wait=True)
+        tpl = self.getTPL()
+        tpl.set('TELESCOPE.STOP', 1, wait=True)
         return True
 
     @lock

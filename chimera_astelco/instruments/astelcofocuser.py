@@ -19,7 +19,7 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 import os
-# import time
+import time
 import collections
 import threading
 
@@ -138,6 +138,7 @@ vector. Temperature compensation can also be performed.
 
         tpl = self.getTPL()
         self.log.debug('[control] %s' % tpl.getobject('SERVER.UPTIME'))
+        self._getRealPosition()
 
         return True
 
@@ -212,7 +213,7 @@ vector. Temperature compensation can also be performed.
         if self['hexapod']:
             # pos = [0] * self['naxis']
             for iax in range(self['naxis']):
-                self._position[iax] = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS.REALPOS[%i]' % iax)
+                self._position[iax] = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS[%i].REALPOS' % iax)
             return self._position
         else:
             self._position[Axis.Z.index] = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS.REALPOS')
@@ -246,6 +247,7 @@ vector. Temperature compensation can also be performed.
         cmdid = None
         tpl = self.getTPL()
 
+        start = time.time()
         if self['hexapod']:
             cmdid = tpl.set('POSITION.INSTRUMENTAL.FOCUS[%i].OFFSET' % axis.index, n)
         else:
@@ -257,6 +259,38 @@ vector. Temperature compensation can also be performed.
             self.log.error(msg)
             raise InvalidFocusPositionException(msg)
 
+        # Todo: Check if hexapod is moving and wait it stop
+        MSTATE = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS[%i].MOTION_STATE' % axis.index)
+        mbitcode = [0, 1, 2, 3, 4]
+        MMESSG = ['Axis is moving',
+                  'Trajectory is running',
+                  'Movement is blocked',
+                  'Axis reached desired position',
+                  'Axis moving too fast']
+        moving = True
+        self._abort.clear()
+        cmd = tpl.getCmd(cmdid)
+        while moving:
+            if cmd.complete:
+                moving = False
+                break
+            MSTATE = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS[%i].MOTION_STATE' % axis.index)
+            moving = MSTATE != 0
+            state = moving
+            msg = ''
+            for ib, bit in enumerate(mbitcode):
+                if ( MSTATE & (1 << bit) ) != 0:
+                    #STATE = False
+                    msg += MMESSG[ib] + '|'
+            if len(msg) > 0:
+                self.log.info(msg)
+            if time.time() > start+self["move_timeout"]:
+                self.log.error("Operation timed out.")
+                break
+            if self._abort.isSet():
+                self.log.info('Operation aborted')
+                break
+            cmd = tpl.getCmd(cmdid)
         # check limit state
         LSTATE = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS[%i].LIMIT_STATE' % axis.index)
         #code = '%16s'%(bin(LSTATE)[2:][::-1])
@@ -282,7 +316,8 @@ vector. Temperature compensation can also be performed.
             raise InvalidFocusPositionException(msg)
             #return -1
 
-        self._position[axis.index] = n
+        # self._position[axis.index] = n
+        self._getRealPosition()
 
         return 0
 

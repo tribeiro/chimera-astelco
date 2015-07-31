@@ -359,7 +359,7 @@ class TPL(ChimeraObject):
             start = time.time()
             while not self.commands_sent[cmid].status == "COMPLETE":
                 if  time.time() > start+self['timeout']:
-                    self.log.warning('Command %i timed out...'%(cmdid))
+                    self.log.warning('Command %i timed out...'%(cmid))
                     break
                 continue
 
