@@ -1476,7 +1476,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
     @lock
     def updateSensors(self):
 
-        sensors = [('SENSTIME',dt.datetime.now().time(),"Last time sensors where updated.")]
+        sensors = [('SENSTIME','%s'%dt.datetime.now(),"Last time sensors where updated.")]
 
         tpl = self.getTPL()
 
@@ -1491,7 +1491,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
             value = tpl.getobject('AUXILIARY.SENSOR[%i].VALUE' % (n + 1))
             unit = tpl.getobject('AUXILIARY.SENSOR[%i].UNITY' % (n + 1))
             sensors.append((description, value, unit))
-            sensors.append((0, 0, 0))
+            # sensors.append((0, 0, 0))
 
         self.sensors = sensors
 
