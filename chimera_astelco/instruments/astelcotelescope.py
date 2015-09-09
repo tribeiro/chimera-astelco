@@ -224,10 +224,11 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
             self.log.info('[control] Got telescope status "%s", trying to acknowledge it... ' % status)
             self.acknowledgeEvents()
         elif status == AstelcoTelescopeStatus.PANIC or status == AstelcoTelescopeStatus.ERROR:
-            self.log.error('[control] Telescope in %s mode! Cannot operate!' % status)
+            self.log.error('[control] Telescope in %s mode!' % status)
             # What should be done? Try to acknowledge and if that fails do what?
         else:
-            return False
+            self.log.error('[control] Telescope in %s mode!' % status)
+            # return False
 
         # Update sensor and coordinate information
         self.updateSensors()
@@ -317,26 +318,27 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
         target = self.getTargetRaDec()
 
-        return self._waitSlew(time.time(), target, slew_time=slewTime)
+        status = self._waitSlew(time.time(), target, slew_time=slewTime)
+        if status == TelescopeStatus.OK:
+            return self._startTracking(time.time(), target, slew_time=slewTime)
+        else:
+            return TelescopeStatus.ERROR
 
     @lock
     def slewToAltAz(self, position):  # no need to convert to Astelco
         self._validateAltAz(position)
 
-        self.setSlewRate(self["slew_rate"])
+        # self.setSlewRate(self["slew_rate"])
 
         if self.isSlewing():
             # never should happens 'cause @lock
             raise AstelcoException("Telescope already slewing.")
-
-        lastAlignMode = self.getAlignMode()
 
         self.setTargetAltAz(position.alt, position.az)
 
         status = TelescopeStatus.OK
 
         try:
-            self.setAlignMode(AlignMode.ALT_AZ)
             status = self._slewToAltAz()
             #return True
         except Exception, e:
@@ -346,18 +348,21 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
                 status = TelescopeStatus.ABORTED
         finally:
             self.slewComplete(self.getPositionRaDec(), status)
-            self.setAlignMode(lastAlignMode)
             return status
 
     def _slewToAltAz(self):  # converted to Astelco
         self._slewing = True
         self._abort.clear()
 
-        # slew
-        self.log.debug("Time to slew to Alt/Az is reported to be %s s." % self._tpl.getobject('POINTING.SLEWTIME'))
+        tpl = self.getTPL()
+        slewTime = tpl.getobject('POINTING.SLEWTIME')
+
+        self.log.debug("Time to slew to Alt/Az is reported to be %s s." % slewTime)
 
         target = self.getTargetAltAz()
+        self.log.debug("Target Alt/Az  %s s." % target)
 
+        # return TelescopeStatus.OK
         return self._waitSlew(time.time(), target, local=True)
 
     def _waitSlew(self, start_time, target, local=False, slew_time=-1):  # converted to Astelco
@@ -461,7 +466,9 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
                 if local:
                     position = self.getPositionAltAz()
                 angsep = target.angsep(position)
-                self.log.debug('Target: %s | Position: %s | Distance: %s' % (target, position, angsep))
+                self.log.debug('Target: %s | Position: %s | Distance: %f' % (target, position, angsep.AS))
+                if angsep.AS < 60.:
+                    self.abortSlew()
 
                 slew_time += slew_time
 
@@ -475,6 +482,9 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
             # time.sleep(self["slew_idle_time"])
             cmd = tpl.getCmd(cmdid)
 
+    def _startTracking(self, start_time, target, local=False, slew_time=-1):  # converted to Astelco):
+
+        tpl = self.getTPL()
         self.log.debug('SEND: POINTING.TRACK 1')
         cmdid = tpl.set('POINTING.TRACK', 1, wait=True)
         self.log.debug('PASSED')
@@ -596,7 +606,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
     def _move(self, direction, offset, slewRate=SlewRate.GUIDE):  # yet to convert to Astelco
 
-        if offset.D > 2.0:
+        if offset / 3600. > 2.0:
             raise AstelcoException("Offset %.2f %s too large!"%(offset.D,direction))
 
         current_offset = self._getOffset(direction)
@@ -609,15 +619,15 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         tpl = self.getTPL()
 
         if direction == Direction.W:
-            off = current_offset + offset.D * np.cos(self.getDec().R)
+            off = current_offset + offset / 3600. * np.cos(self.getDec().R)
             cmdid = tpl.set('POSITION.INSTRUMENTAL.HA.OFFSET', off, wait=True)
         elif direction == Direction.E:
-            off = current_offset - offset.D  * np.cos(self.getDec().R)
+            off = current_offset - offset / 3600. * np.cos(self.getDec().R)
             cmdid = tpl.set('POSITION.INSTRUMENTAL.HA.OFFSET', off, wait=True)
         elif direction == Direction.N:
-            cmdid = tpl.set('POSITION.INSTRUMENTAL.DEC.OFFSET', current_offset + offset.D, wait=True)
+            cmdid = tpl.set('POSITION.INSTRUMENTAL.DEC.OFFSET', current_offset + offset / 3600., wait=True)
         elif direction == Direction.S:
-            cmdid = tpl.set('POSITION.INSTRUMENTAL.DEC.OFFSET', current_offset - offset.D, wait=True)
+            cmdid = tpl.set('POSITION.INSTRUMENTAL.DEC.OFFSET', current_offset - offset / 3600., wait=True)
         else:
             self._slewing = False
             return True

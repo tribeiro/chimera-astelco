@@ -114,7 +114,7 @@ class AstelcoDome(DomeBase):
         # with the telescope. If it is not I will wait until it gets
         # in sync or timeout...
 
-        if self._mode == Mode.Track:
+        if self.getMode() == Mode.Track:
             self.log.warning('Dome is in track mode... Slew is completely controled by AsTelOS...')
             self.slewBegin(az)
 
