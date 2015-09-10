@@ -116,37 +116,37 @@ class TPL(ChimeraObject):
 
         self.setHz(self['freq'])
 
-        self.log.debug('tpl START')
+        self.log.log(5,'tpl START')
         self.open()
 
         return True
 
     def __stop__(self):
-        self.log.debug('tpl STOP')
+        self.log.log(5,'tpl STOP')
         self.close()
 
     @lock
     def control(self):
 
-        # self.log.debug('[control] entering...')
+        # self.log.log(5,'[control] entering...')
 
         # check if there is any incomplete command
         incomplete = np.any(np.array([not cmd.complete for cmd in self.commands_sent.values()]))
         if incomplete:
-            self.log.debug('[control] TPL has incomplete commands')
+            self.log.log(5,'[control] TPL has incomplete commands')
             for cmd in self.commands_sent.values():
                 if not cmd.complete:
-                    self.log.debug('[control] Command %i not complete'%cmd.id)
+                    self.log.log(5,'[control] Command %i not complete'%cmd.id)
         else:
             return True
 
         exp_recv = self.expect()
-        self.log.debug('[control] Received %i commands'%len(exp_recv))
+        self.log.log(5,'[control] Received %i commands'%len(exp_recv))
 
         for i in range(len(exp_recv)):
             recv = exp_recv[i]
 
-            self.log.debug(recv[2])
+            self.log.log(5,recv[2])
             cmdid = int(recv[1].group('CMDID'))
             if not cmdid in self.commands_sent.keys():
                 self.log.warning('Received a bad command id %i. Skipping'%cmdid)
@@ -183,14 +183,14 @@ class TPL(ChimeraObject):
         # Check size of commands and clear history
         while len(self.commands_sent) > int(self["history"]):
             self.last_cmd_deleted += 1
-            self.log.debug('[control] Cleaning command history. Deleting cmd with id: %i'%self.last_cmd_deleted)
+            self.log.log(5,'[control] Cleaning command history. Deleting cmd with id: %i'%self.last_cmd_deleted)
             self.commands_sent.pop(self.last_cmd_deleted)
 
-        # self.log.debug('[control] Received %i commands'%nrec)
+        # self.log.log(5,'[control] Received %i commands'%nrec)
         # for cmd in self.commands_sent.values():
         #     msg = '%s %s %s'%(cmd.id,cmd.status,cmd.allstatus)
-        #     self.log.debug(msg)
-        self.log.debug('[control] Done')
+        #     self.log.log(5,msg)
+        self.log.log(5,'[control] Done')
 
         return True
 
@@ -312,7 +312,7 @@ class TPL(ChimeraObject):
     def send(self, message='\r\n'):
 
         msg = '%s'%(message)
-        self.log.debug( msg[:-1] )
+        self.log.log(5, msg[:-1] )
 
         try:
             self.sock.write('%s'%message)
@@ -376,7 +376,7 @@ class TPL(ChimeraObject):
         # return None
         #
         # while not st == 'COMPLETE':
-        #     log.debug( '[%3i/%i] TPL2 getobject: got status "%s"'%(ntries,self.max_tries,st) )
+        #     log.log(5, '[%3i/%i] TPL2 getobject: got status "%s"'%(ntries,self.max_tries,st) )
         #     ntries+=1
         #     time.sleep(self.sleep)
         #     st = self.commands_sent[ocmid]['status']
@@ -405,7 +405,7 @@ class TPL(ChimeraObject):
         st = self.commands_sent[ocmid].status
 
         while not st == 'COMPLETE':
-            log.debug( '[%3i/%i] TPL2 getobject: got status "%s"'%(ntries,self.max_tries,st) )
+            log.log(5, '[%3i/%i] TPL2 getobject: got status "%s"'%(ntries,self.max_tries,st) )
             ntries+=1
             time.sleep(self.sleep)
             st = self.commands_sent[ocmid]['status']
@@ -416,7 +416,7 @@ class TPL(ChimeraObject):
             log.warning( 'TPL2 getobject: got status  %s ...' %st )
             return None
         if self.debug:
-            log.debug(self.received_objects)
+            log.log(5,self.received_objects)
         if self.received_objects[object + '!TYPE'] == '0':
             self.received_objects[object] = None
         elif self.received_objects[object + '!TYPE'] == '1':

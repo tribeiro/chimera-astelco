@@ -63,6 +63,10 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
                   'maxidletime': 90.,
                   'parktimeout': 600.,
                   'sensors': 7,
+                  'pointing_model': None,      # The filename of the pointing model. None is leave as is
+                  'pointing_model_type': None, # Type of pointing model. None is leave as is. either 0,1 or 2
+                  'pointing_setup_orientation': None,
+                  'pointing_setup_optimization': None,
                   'tpl':'/TPL/0'}  # TODO: FIX tpl so I can get COUNT on an axis.
 
 
@@ -193,10 +197,60 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
             # Update sensors and position
             self.updateSensors()
-            self.getRa()
-            self.getDec()
-            self.getAlt()
-            self.getAz()
+            tpl = self.getTPL()
+            tpl.set('AUXILIARY.PADDLE.BRIGHTNESS',0.0) # set brightness to zero
+            # Loading pointing model
+            #'pointing_model_type': None, # Type of pointing model. None is leave as is. either 0,1 or 2
+
+            if self['pointing_model'] is not None:
+                pt_model = tpl.getobject('POINTING.MODEL.FILE')
+                if pt_model != self['pointing_model']:
+                    tpl.set('POINTING.MODEL.FILE',self['pointing_model'])
+                if self['pointing_model_type'] is not None:
+                    pt_model_type = tpl.getobject('POINTING.MODEL.TYPE')
+                    if pt_model_type != self['pointing_model_type']:
+                        tpl.set('POINTING.MODEL.TYPE',int(self['pointing_model_type']))
+                        cmdid = tpl.set('POINTING.MODEL.CALCULATE',1,wait=False)
+                        ptt = tpl.getobject('POINTING.MODEL.TYPE')
+                        self.log.debug('MODEL TYPE: %s/%s'%(ptt,self['pointing_model_type']))
+                        cmd = tpl.getCmd(cmdid)
+                        start = time.time()
+                        while not cmd.complete:
+                            self.log.debug('Waiting for pointing model calculation...')
+                            time.sleep(0.1)
+                            if time.time() - start > self["max_slew_time"]:
+                                self.log.warning('Pointing model calculation taking too long... Will not wait...')
+                                break
+                            cmd = tpl.getCmd(cmdid)
+                        if cmd.complete:
+                            modelinfo = tpl.getobject('POINTING.MODEL.CALCULATE')
+                            self.log.info('Pointing model quality: %s'%modelinfo)
+            ptm_type = tpl.getobject('POINTING.MODEL.TYPE')
+            pt_model = tpl.getobject('POINTING.MODEL.FILE')
+            modelinfo = tpl.getobject('POINTING.MODEL.CALCULATE')
+            mtype = 'None' if ptm_type == 0 else 'NORMAL' if ptm_type == 1 else "EXTENDED"
+            self.log.debug('Pointing model info:\n\tNAME: %s\n\tTYPE: %s\n\tQUALITY: %s.'%(pt_model,mtype,modelinfo))
+
+            # Setting up POINTING
+            if self['pointing_setup_orientation'] is not None:
+                tpl.set('POINTING.SETUP.ORIENTATION',self['pointing_setup_orientation'])
+            if self['pointing_setup_optimization'] is not None:
+                tpl.set('POINTING.SETUP.OPTIMIZATION',self['pointing_setup_optimization'])
+
+            orient = tpl.getobject('POINTING.SETUP.ORIENTATION')
+            optim = tpl.getobject('POINTING.SETUP.OPTIMIZATION')
+
+            orient = 'NORMAL' if orient == 0 else 'REVERSE' if orient == 1 else 'AUTOMATIC'
+            optim = 'NO OPTIMIZATION' if optim == 0 else 'MAX TRACKING TIME' if optim == 1 else "MIN SLEW TIME"
+            
+            self.log.info('Current pointing setup:\n\tORIENTATION: %s\n\tOPTIMIZATION: %s'%(orient,optim))
+            # tpl.set('POINTING.SETUP.ORIENTATION',2) # AUTOMATIC SELECTION
+            # tpl.set('POINTING.SETUP.OPTIMIZATION',2) # MINIMIZE SLEW TIME
+
+            # self.getRa()
+            # self.getDec()
+            # self.getAlt()
+            # self.getAz()
 
             return True
 
@@ -222,20 +276,24 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
             return True
         elif status == AstelcoTelescopeStatus.WARNING or status == AstelcoTelescopeStatus.INFO:
             self.log.info('[control] Got telescope status "%s", trying to acknowledge it... ' % status)
+            self.logStatus()
             self.acknowledgeEvents()
         elif status == AstelcoTelescopeStatus.PANIC or status == AstelcoTelescopeStatus.ERROR:
+            self.logStatus()
             self.log.error('[control] Telescope in %s mode!' % status)
             # What should be done? Try to acknowledge and if that fails do what?
         else:
+            self.logStatus()
             self.log.error('[control] Telescope in %s mode!' % status)
             # return False
 
         # Update sensor and coordinate information
         self.updateSensors()
-        self.getRa()
-        self.getDec()
-        self.getAlt()
-        self.getAz()
+
+        # self.getRa()
+        # self.getDec()
+        # self.getAlt()
+        # self.getAz()
 
         return True
 
@@ -1265,8 +1323,13 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         return AstelcoTelescopeStatus.OK
 
     def logStatus(self):
-        # ToDo: Get Status message and log
-        pass
+        tpl = self.getTPL()
+
+        list = tpl.getobject('TELESCOPE.STATUS.LIST')
+        block = list.split(',')
+        # TODO: Improve separation of information for logging
+        for group in block:
+            self.log.debug(group)
 
     def acknowledgeEvents(self):
         '''
@@ -1312,10 +1375,21 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
         if not self.isParked():
             return True
-        # ToDo: Raise an exception if telescope is in local mode
-        # 1. power on
-        #self.powerOn ()
+
         tpl = self.getTPL()
+
+        # Checking Telescope state
+        state = tpl.getobject('TELESCOPE.READY_STATE')
+        if state == -3:
+            AstelcoException('Telescope in local mode. Check cabinet.')
+        elif state == -2:
+            AstelcoException('Emergency stop.')
+        elif state == -1:
+            AstelcoException('Error block telescope operation.')
+        elif 0. < state < 1.:
+            self.log.critical('Telescope already powering up.')
+            return False
+
         cmdid = tpl.set('TELESCOPE.READY', 1, wait=False)
 
         # 2. start tracking
@@ -1334,13 +1408,13 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
                 old_ready_state = ready_state
             if self._abort.set():
                 # Send abort command to astelco
-                self.log.warning("Abort parking! This will leave the telescope in an intermediate state!")
+                self.log.warning("Aborting! This will leave the telescope in an intermediate state!")
                 tpl.set('ABORT', cmdid)
                 return False
             if time.time() > start_time + self['parktimeout']:
                 self.log.error("Parking operation timedout!")
                 tpl.set('ABORT', cmdid)
-                raise AstelcoException('Unparking telescope aborted. TIMEOUT.')
+                raise AstelcoException('Unparking telescope timedout.')
 
             status = self.getTelescopeStatus()
             if status == AstelcoTelescopeStatus.WARNING or status == AstelcoTelescopeStatus.INFO:
@@ -1351,16 +1425,16 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
                 # When something really bad happens during unpark, telescope needs to be parked
                 # and then, start over.
                 tpl.set('ABORT', cmdid)
-                self.log.critical("Something wrong with the telescope. Acknowledging state and aborting...")
+                self.log.critical("Something wrong with the telescope. Aborting...")
                 self.logStatus()
-                self.acknowledgeEvents() # This is needed so I can tell the telescope to park afterwards
+                # self.acknowledgeEvents() # This is needed so I can tell the telescope to park afterwards
                 errmsg = '''Something wrong happened while trying to unpark the telescope. In most cases this happens
                 when one of the submodules (like the hexapod) is not properly loaded. Waiting a couple of minutes,
                 parking and unparking it again should solve the problem. If that doesn't work, there may be a more
                 serious problem with the system.'''
                 raise AstelcoException(errmsg)
 
-            time.sleep(5.0)
+            time.sleep(.1)
 
         # 3. set location, date and time
         self._initTelescope()
@@ -1505,33 +1579,33 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
         self.sensors = sensors
 
-    def getMetadata(self, request):
-        return [('TELESCOP', self['model'], 'Telescope Model'),
-                ('OPTICS', self['optics'], 'Telescope Optics Type'),
-                ('MOUNT', self['mount'], 'Telescope Mount Type'),
-                ('APERTURE', self['aperture'], 'Telescope aperture size [mm]'),
-                ('F_LENGTH', self['focal_length'],
-                 'Telescope focal length [mm]'),
-                ('F_REDUCT', self['focal_reduction'],
-                 'Telescope focal reduction'),
-                # TODO: Convert coordinates to proper equinox
-                # TODO: How to get ra,dec at start of exposure (not end)
-                ('RA', self._getRa().toHMS().__str__(),
-                 'Right ascension of the observed object'),
-                ('DEC', self._getDec().toDMS().__str__(),
-                 'Declination of the observed object'),
-                ("EQUINOX", 2000.0, "coordinate epoch"),
-                ('ALT', self._getAlt().toDMS().__str__(),
-                 'Altitude of the observed object'),
-                ('AZ', self._getAz().toDMS().__str__(),
-                 'Azimuth of the observed object'),
-                ("WCSAXES", 2, "wcs dimensionality"),
-                ("RADESYS", "ICRS", "frame of reference"),
-                ("CRVAL1", self._getRa().D,
-                 "coordinate system value at reference pixel"),
-                ("CRVAL2", self._getDec().D,
-                 "coordinate system value at reference pixel"),
-                ("CTYPE1", 'RA---TAN', "name of the coordinate axis"),
-                ("CTYPE2", 'DEC--TAN', "name of the coordinate axis"),
-                ("CUNIT1", 'deg', "units of coordinate value"),
-                ("CUNIT2", 'deg', "units of coordinate value")] + self.getSensors()
+    # def getMetadata(self, request):
+    #     return [('TELESCOP', self['model'], 'Telescope Model'),
+    #             ('OPTICS', self['optics'], 'Telescope Optics Type'),
+    #             ('MOUNT', self['mount'], 'Telescope Mount Type'),
+    #             ('APERTURE', self['aperture'], 'Telescope aperture size [mm]'),
+    #             ('F_LENGTH', self['focal_length'],
+    #              'Telescope focal length [mm]'),
+    #             ('F_REDUCT', self['focal_reduction'],
+    #              'Telescope focal reduction'),
+    #             # TODO: Convert coordinates to proper equinox
+    #             # TODO: How to get ra,dec at start of exposure (not end)
+    #             ('RA', self._getRa().toHMS().__str__(),
+    #              'Right ascension of the observed object'),
+    #             ('DEC', self._getDec().toDMS().__str__(),
+    #              'Declination of the observed object'),
+    #             ("EQUINOX", 2000.0, "coordinate epoch"),
+    #             ('ALT', self._getAlt().toDMS().__str__(),
+    #              'Altitude of the observed object'),
+    #             ('AZ', self._getAz().toDMS().__str__(),
+    #              'Azimuth of the observed object'),
+    #             ("WCSAXES", 2, "wcs dimensionality"),
+    #             ("RADESYS", "ICRS", "frame of reference"),
+    #             ("CRVAL1", self._getRa().D,
+    #              "coordinate system value at reference pixel"),
+    #             ("CRVAL2", self._getDec().D,
+    #              "coordinate system value at reference pixel"),
+    #             ("CTYPE1", 'RA---TAN', "name of the coordinate axis"),
+    #             ("CTYPE2", 'DEC--TAN', "name of the coordinate axis"),
+    #             ("CUNIT1", 'deg', "units of coordinate value"),
+    #             ("CUNIT2", 'deg', "units of coordinate value")] + self.getSensors()
