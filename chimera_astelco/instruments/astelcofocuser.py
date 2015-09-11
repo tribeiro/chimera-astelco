@@ -344,16 +344,24 @@ vector. Temperature compensation can also be performed.
 
     def getMetadata(self, request):
         if self['hexapod']:
-            x, y, z, u, v = self._getStoredRealPosition()
+            x, y, z, u, v = self._getRealPosition()
+            dx, dy, dz, du, dv = self.getOffset()
             return [('FOCUSER', str(self['model']), 'Focuser Model'),
                     ('XHEX', x, 'Hexapod x position'),
                     ('YHEX', y, 'Hexapod y position'),
                     ('FOCUS', z,
                      'Focuser position used for this observation'),
                     ('UHEX', u, 'Hexapod u angle'),
-                    ('VHEX', v, 'Hexapod v angle')]
+                    ('VHEX', v, 'Hexapod v angle'),
+                    ('DXHEX', x, 'Hexapod x offset'),
+                    ('DYHEX', y, 'Hexapod y offset'),
+                    ('DZHEX', z,
+                     'Focuser offset used for this observation'),
+                    ('DUHEX', u, 'Hexapod u angle offset'),
+                    ('DVHEX', v, 'Hexapod v angle offset')
+                    ]
         else:
-            z = self._getStoredRealPosition()
+            z = self._getRealPosition()
             return [('FOCUSER', str(self['model']), 'Focuser Model'),
                     ('FOCUS', z,
                      'Focuser position used for this observation')]
