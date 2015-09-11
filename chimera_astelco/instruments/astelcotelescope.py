@@ -242,7 +242,6 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
             orient = 'NORMAL' if orient == 0 else 'REVERSE' if orient == 1 else 'AUTOMATIC'
             optim = 'NO OPTIMIZATION' if optim == 0 else 'MAX TRACKING TIME' if optim == 1 else "MIN SLEW TIME"
-            
             self.log.info('Current pointing setup:\n\tORIENTATION: %s\n\tOPTIMIZATION: %s'%(orient,optim))
             # tpl.set('POINTING.SETUP.ORIENTATION',2) # AUTOMATIC SELECTION
             # tpl.set('POINTING.SETUP.OPTIMIZATION',2) # MINIMIZE SLEW TIME
@@ -377,6 +376,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         target = self.getTargetRaDec()
 
         status = self._waitSlew(time.time(), target, slew_time=slewTime)
+
         if status == TelescopeStatus.OK:
             return self._startTracking(time.time(), target, slew_time=slewTime)
         else:
@@ -535,7 +535,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
             self.log.debug('MSTATE: %i (%s)' % (mstate, bin(mstate)))
             if (mstate & 1) == 0:
                 self.log.debug('Slew finished...')
-                break
+                return TelescopeStatus.OK
 
             # time.sleep(self["slew_idle_time"])
             cmd = tpl.getCmd(cmdid)
