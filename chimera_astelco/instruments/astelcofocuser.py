@@ -353,12 +353,12 @@ vector. Temperature compensation can also be performed.
                      'Focuser position used for this observation'),
                     ('UHEX', u, 'Hexapod u angle'),
                     ('VHEX', v, 'Hexapod v angle'),
-                    ('DXHEX', x, 'Hexapod x offset'),
-                    ('DYHEX', y, 'Hexapod y offset'),
-                    ('DZHEX', z,
+                    ('DXHEX', dx, 'Hexapod x offset'),
+                    ('DYHEX', dy, 'Hexapod y offset'),
+                    ('DZHEX', dz,
                      'Focuser offset used for this observation'),
-                    ('DUHEX', u, 'Hexapod u angle offset'),
-                    ('DVHEX', v, 'Hexapod v angle offset')
+                    ('DUHEX', du, 'Hexapod u angle offset'),
+                    ('DVHEX', dv, 'Hexapod v angle offset')
                     ]
         else:
             z = self._getRealPosition()
