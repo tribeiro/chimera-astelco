@@ -111,7 +111,7 @@ class AstelcoDome(DomeBase):
     def slewToAz(self, az):
         # Astelco Dome will only enable slew if it is not tracking
         # If told to slew I will check if the dome is syncronized with
-        # with the telescope. If it is not I will wait until it gets
+        # with the telescope. If it is not it¡ will wait until it gets
         # in sync or timeout...
 
         if self.getMode() == Mode.Track:
@@ -222,6 +222,18 @@ class AstelcoDome(DomeBase):
 
         tpl = self.getTPL()
         ret = tpl.getobject('POSITION.INSTRUMENTAL.DOME[0].CURRPOS')
+        if ret:
+            self._position = ret
+        elif not self._position:
+            self._position = 0.
+
+        return Coord.fromD(self._position)
+
+    @lock
+    def getAz(self):
+
+        tpl = self.getTPL()
+        ret = tpl.getobject('POSITION.INSTRUMENTAL.DOME[0].OFFSET')
         if ret:
             self._position = ret
         elif not self._position:
@@ -377,3 +389,8 @@ class AstelcoDome(DomeBase):
                 return p
         except ObjectNotFoundException:
             return False
+
+    def getMetadata(self, request):
+        baseHDR = super(DomeBase, self).getMetadata(request)
+        newHDR = [("DOME_AZ",self.getAz().toDMS().__str__(),"Dome Azimuth"),
+                  ("D_OFFSET",self.getAzOffset().toDMS().__str__(),"Dome Azimuth offset")]

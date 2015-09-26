@@ -1588,7 +1588,25 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
         self.sensors = sensors
 
-    # def getMetadata(self, request):
+    def getMetadata(self, request):
+        site = self.getManager().getProxy("/Site/0")
+        lst = Coord.fromH(site.LST())
+        baseHDR = super(TelescopeBase, self).getMetadata(request)
+        ra = None
+        for i in range(len(baseHDR)):
+            if baseHDR[i][0] == "RA":
+                ra = Coord.fromHMS(baseHDR[i][1])
+        if ra is None:
+            ra = self.getRa()
+        HA = lst - ra
+
+        newHDR = [('RAOFFSET',self._getOffset(Direction.E).toDMS().__str__(),"Current offset of the telescope in RA (DD:MM:SS.SS)."),
+                  ('DEOFFSET',self.getDecOffset(Direction.N).toDMS().__str__(),"Current offset of the telescope in Declination (DD:MM:SS.SS)."),
+                  ('HA',HA.toHMS().__str__(),"Hour Angle at the start of the observation (HH:MM:SS.SS).")]
+        for new in newHDR:
+            baseHDR.append(new)
+        return baseHDR
+
     #     return [('TELESCOP', self['model'], 'Telescope Model'),
     #             ('OPTICS', self['optics'], 'Telescope Optics Type'),
     #             ('MOUNT', self['mount'], 'Telescope Mount Type'),
