@@ -397,5 +397,5 @@ class AstelcoDome(DomeBase):
 
         for new in newHDR:
             baseHDR.append(new)
-            
+
         return baseHDR

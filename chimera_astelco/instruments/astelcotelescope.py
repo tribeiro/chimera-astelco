@@ -1599,9 +1599,11 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         if ra is None:
             ra = self.getRa()
         HA = lst - ra
+        RAoffset = Coord.fromD(self._getOffset(Direction.E))
+        DECoffset = Coord.fromD(self._getOffset(Direction.N))
 
-        newHDR = [('RAOFFSET',self._getOffset(Direction.E).toDMS().__str__(),"Current offset of the telescope in RA (DD:MM:SS.SS)."),
-                  ('DEOFFSET',self.getDecOffset(Direction.N).toDMS().__str__(),"Current offset of the telescope in Declination (DD:MM:SS.SS)."),
+        newHDR = [('RAOFFSET',RAoffset.toDMS().__str__(),"Current offset of the telescope in RA (DD:MM:SS.SS)."),
+                  ('DEOFFSET',DECoffset.toDMS().__str__(),"Current offset of the telescope in Declination (DD:MM:SS.SS)."),
                   ('HA',HA.toHMS().__str__(),"Hour Angle at the start of the observation (HH:MM:SS.SS).")]
         for new in newHDR:
             baseHDR.append(new)
