@@ -230,7 +230,7 @@ class AstelcoDome(DomeBase):
         return Coord.fromD(self._position)
 
     @lock
-    def getAz(self):
+    def getAzOffset(self):
 
         tpl = self.getTPL()
         ret = tpl.getobject('POSITION.INSTRUMENTAL.DOME[0].OFFSET')
