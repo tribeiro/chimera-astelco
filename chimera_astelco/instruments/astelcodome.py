@@ -394,3 +394,8 @@ class AstelcoDome(DomeBase):
         baseHDR = super(DomeBase, self).getMetadata(request)
         newHDR = [("DOME_AZ",self.getAz().toDMS().__str__(),"Dome Azimuth"),
                   ("D_OFFSET",self.getAzOffset().toDMS().__str__(),"Dome Azimuth offset")]
+
+        for new in newHDR:
+            baseHDR.append(new)
+            
+        return baseHDR
