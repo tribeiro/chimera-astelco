@@ -257,13 +257,12 @@ class AstelcoDome(DomeBase):
 
         # check slit condition
 
-        if self._slitMoving:
+        if self.slitMoving():
             raise AstelcoException('Slit already opening...')
         elif self.isSlitOpen():
             self.log.info('Slit already opened...')
             return 0
 
-        self._slitMoving = True
         self._abort.clear()
         tpl = self.getTPL()
 
@@ -276,7 +275,6 @@ class AstelcoDome(DomeBase):
         while not cmd.complete:
 
             if self._abort.isSet():
-                self._slitMoving = False
                 return DomeStatus.ABORTED
             elif time.time() > time_start + self._maxSlewTime:
                 return DomeStatus.TIMEOUT
@@ -299,7 +297,6 @@ class AstelcoDome(DomeBase):
         while not cmd.complete:
 
             if self._abort.isSet():
-                self._slitMoving = False
                 return DomeStatus.ABORTED
             elif time.time() > time_start + self._maxSlewTime:
                 return DomeStatus.TIMEOUT
@@ -339,11 +336,8 @@ class AstelcoDome(DomeBase):
             #     self.log.debug(line)
 
             if realpos == 0:
-                self._slitMoving = False
-                self._slitOpen = False
                 return DomeStatus.OK
             elif self._abort.isSet():
-                self._slitMoving = False
                 return DomeStatus.ABORTED
             elif time.time() > time_start + self._maxSlewTime:
                 return DomeStatus.TIMEOUT
@@ -355,7 +349,6 @@ class AstelcoDome(DomeBase):
         while realpos != 0:
 
             if self._abort.isSet():
-                self._slitMoving = False
                 return DomeStatus.ABORTED
             elif time.time() > time_start + self._maxSlewTime:
                 return DomeStatus.TIMEOUT
@@ -363,6 +356,10 @@ class AstelcoDome(DomeBase):
             realpos = tpl.getobject('AUXILIARY.DOME.REALPOS')
 
         return DomeStatus.OK
+
+    def slitMoving(self):
+        # Todo: Find command to check if slit is movng
+        return False
 
     def isSlitOpen(self):
         tpl = self.getTPL()

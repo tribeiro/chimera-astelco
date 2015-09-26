@@ -233,7 +233,12 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
             # Setting up POINTING
             if self['pointing_setup_orientation'] is not None:
-                tpl.set('POINTING.SETUP.ORIENTATION',self['pointing_setup_orientation'])
+                self.log.debug('Setting pointing orientation to: %s'%self['pointing_setup_orientation'])
+                try:
+                    tpl.set('POINTING.SETUP.ORIENTATION',int(self['pointing_setup_orientation']))
+                except:
+                    self.log.warning('Could not set orientation.')
+                    pass
             if self['pointing_setup_optimization'] is not None:
                 tpl.set('POINTING.SETUP.OPTIMIZATION',self['pointing_setup_optimization'])
 
@@ -425,7 +430,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
     def _waitSlew(self, start_time, target, local=False, slew_time=-1):  # converted to Astelco
         self.slewBegin(target)
-
+        # todo: raise an exception if telescope is parked
         tpl = self.getTPL()
         # Set offset to zero
         if abs(self._getOffset(Direction.N)) > 0:
@@ -530,9 +535,12 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
                 slew_time += slew_time
 
+            dec_state = tpl.getobject('POSITION.INSTRUMENTAL.DEC.MOTION_STATE')
+            ha_state = tpl.getobject('POSITION.INSTRUMENTAL.DEC.MOTION_STATE')
+
             mstate = tpl.getobject('TELESCOPE.MOTION_STATE')
 
-            self.log.debug('MSTATE: %i (%s)' % (mstate, bin(mstate)))
+            self.log.debug('MSTATE: %i (%s) dec= %s ra=%s' % (mstate, bin(mstate),bin(dec_state),bin(ha_state)))
             if (mstate & 1) == 0:
                 self.log.debug('Slew finished...')
                 return TelescopeStatus.OK
@@ -633,8 +641,8 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
     def isSlewing(self):  # converted to Astelco
 
         # if this is true, then chimera issue a slewing command
-        if self._slewing:
-            return self._slewing
+        # if self._slewing:
+        #     return self._slewing
         # if not, need to check if a external command did that...
 
         return self._isSlewing()
@@ -677,10 +685,10 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         tpl = self.getTPL()
 
         if direction == Direction.W:
-            off = current_offset + offset / 3600. * np.cos(self.getDec().R)
+            off = current_offset - offset / 3600. * np.cos(self.getDec().R)
             cmdid = tpl.set('POSITION.INSTRUMENTAL.HA.OFFSET', off, wait=True)
         elif direction == Direction.E:
-            off = current_offset - offset / 3600. * np.cos(self.getDec().R)
+            off = current_offset + offset / 3600. * np.cos(self.getDec().R)
             cmdid = tpl.set('POSITION.INSTRUMENTAL.HA.OFFSET', off, wait=True)
         elif direction == Direction.N:
             cmdid = tpl.set('POSITION.INSTRUMENTAL.DEC.OFFSET', current_offset + offset / 3600., wait=True)
@@ -1429,9 +1437,10 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
                 self.logStatus()
                 # self.acknowledgeEvents() # This is needed so I can tell the telescope to park afterwards
                 errmsg = '''Something wrong happened while trying to unpark the telescope. In most cases this happens
-                when one of the submodules (like the hexapod) is not properly loaded. Waiting a couple of minutes,
-                parking and unparking it again should solve the problem. If that doesn't work, there may be a more
-                serious problem with the system.'''
+                when one of the submodules (like the hexapod) is not properly loaded or working pressure could not be
+                reached. Waiting a couple of minutes, parking and unparking it again should solve the problem or sending
+                someone there to check on the compressor. If that doesn't work, there may be a more serious problem with
+                the system.'''
                 raise AstelcoException(errmsg)
 
             time.sleep(.1)
