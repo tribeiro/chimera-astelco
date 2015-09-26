@@ -40,7 +40,7 @@ from chimera.util.position import Position
 from chimera.util.enum import Enum
 
 from chimera.core.lock import lock
-from chimera.core.exceptions import ObjectNotFoundException, ChimeraException
+from chimera.core.exceptions import ObjectNotFoundException, ChimeraException, ObjectTooLowException
 from chimera.core.constants import SYSTEM_CONFIG_DIRECTORY
 
 Direction = Enum("E", "W", "N", "S")
@@ -448,16 +448,20 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
         # time_sent = time.time()
         while not cmd.complete:
+
+            if not self.checkLimits():
+                return TelescopeStatus.ABORTED
+
             if self._abort.isSet():
                 self._slewing = False
-                self.abortSlew()
+                self.stopMoveAll()
                 self.slewComplete(self.getPositionRaDec(),
                     TelescopeStatus.ABORTED)
                 return TelescopeStatus.ABORTED
 
             # check timeout
             if time.time() >= (start_time + self["max_slew_time"]):
-                self.abortSlew()
+                self.stopMoveAll()
                 self._slewing = False
                 self.log.error('Slew aborted. Max slew time reached.')
                 raise AstelcoException("Slew aborted. Max slew time reached.")
@@ -509,6 +513,9 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
         while True:
 
+            if not self.checkLimits():
+                return TelescopeStatus.ABORTED
+
             if self._abort.isSet():
                 self._slewing = False
                 self.abortSlew()
@@ -518,7 +525,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
             # check timeout
             if time.time() >= (start_time + self["max_slew_time"]):
-                self.abortSlew()
+                self.stopMoveAll()
                 self._slewing = False
                 self.log.error('Slew aborted. Max slew time reached.')
                 raise AstelcoException("Slew aborted. Max slew time reached.")
@@ -569,6 +576,9 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         # time.sleep(self["slew_idle_time"])
 
         while not cmd.complete:
+            
+            if not self.checkLimits():
+                return TelescopeStatus.ABORTED
 
             if self._abort.isSet():
                 self._slewing = False
@@ -629,12 +639,8 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
     #     return TelescopeStatus.OK
 
     def abortSlew(self):  # converted to Astelco
-        if not self.isSlewing():
-            return True
-
-        self._abort.set()
-
         self.stopMoveAll()
+
 
         time.sleep(self["stabilization_time"])
 
@@ -1069,6 +1075,19 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         self._target_az = az
 
         return True
+
+    def checkLimits(self):
+        alt = self.getAlt()
+        try:
+            self._validateAltAz(self.getPositionAltAz())
+        except ObjectTooLowException,e:
+            self.stopMoveAll()
+            self.log.exception(e)
+            return False
+        except:
+            pass
+        return True
+
 
     @lock
     def getLat(self):  # converted to Astelco
@@ -1604,7 +1623,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
                   ('DEOFFSET',DECoffset.toDMS().__str__(),"Current offset of the telescope in Declination (DD:MM:SS.SS)."),
                   ('TEL_LST',lst.toHMS().__str__(),"Local Sidereal Time at the start of the observation (HH:MM:SS.SS)."),
                   ('TEL_HA',HA.toHMS().__str__(),"Hour Angle at the start of the observation (HH:MM:SS.SS).")]
-        
+
         for new in newHDR:
             baseHDR.append(new)
         return baseHDR
