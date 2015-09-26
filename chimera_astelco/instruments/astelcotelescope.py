@@ -1140,9 +1140,8 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
     @lock
     def getLocalSiderealTime(self):  # converted to Astelco
         tpl = self.getTPL()
-        ret = tpl.getobject('POSITION.LOCAL.SIDEREAL')
-        c = Coord.fromH(ret)
-        return dt.datetime.time(c.HMS[1:-1])
+        ret = tpl.getobject('POSITION.LOCAL.SIDEREAL_TIME')
+        return Coord.fromH(ret)
 
     @lock
     def setLocalSiderealTime(self, local):  # converted to Astelco
@@ -1589,8 +1588,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         self.sensors = sensors
 
     def getMetadata(self, request):
-        site = self.getManager().getProxy("/Site/0")
-        lst = Coord.fromH(site.LST())
+        lst = self.getLocalSiderealTime()
         baseHDR = super(TelescopeBase, self).getMetadata(request)
         ra = None
         for i in range(len(baseHDR)):
@@ -1604,7 +1602,9 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
         newHDR = [('RAOFFSET',RAoffset.toDMS().__str__(),"Current offset of the telescope in RA (DD:MM:SS.SS)."),
                   ('DEOFFSET',DECoffset.toDMS().__str__(),"Current offset of the telescope in Declination (DD:MM:SS.SS)."),
-                  ('HA',HA.toHMS().__str__(),"Hour Angle at the start of the observation (HH:MM:SS.SS).")]
+                  ('TEL_LST',lst.toHMS().__str__(),"Local Sidereal Time at the start of the observation (HH:MM:SS.SS)."),
+                  ('TEL_HA',HA.toHMS().__str__(),"Hour Angle at the start of the observation (HH:MM:SS.SS).")]
+        
         for new in newHDR:
             baseHDR.append(new)
         return baseHDR
