@@ -1608,7 +1608,34 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
     def getMetadata(self, request):
         lst = self.getLocalSiderealTime()
-        baseHDR = super(TelescopeBase, self).getMetadata(request)
+        baseHDR = [('TELESCOP', self['model'], 'Telescope Model'),
+                ('OPTICS', self['optics'], 'Telescope Optics Type'),
+                ('MOUNT', self['mount'], 'Telescope Mount Type'),
+                ('APERTURE', self['aperture'], 'Telescope aperture size [mm]'),
+                ('F_LENGTH', self['focal_length'],
+                 'Telescope focal length [mm]'),
+                ('F_REDUCT', self['focal_reduction'],
+                 'Telescope focal reduction'),
+                ('RA', self.getRa().toHMS().__str__(),
+                 'Right ascension of the observed object'),
+                ('DEC', self.getDec().toDMS().__str__(),
+                 'Declination of the observed object'),
+                ("EQUINOX", 2000.0, "coordinate epoch"),
+                ('ALT', self.getAlt().toDMS().__str__(),
+                 'Altitude of the observed object'),
+                ('AZ', self.getAz().toDMS().__str__(),
+                 'Azimuth of the observed object'),
+                ("WCSAXES", 2, "wcs dimensionality"),
+                ("RADESYS", "ICRS", "frame of reference"),
+                ("CRVAL1", self.getRa().D,
+                 "coordinate system value at reference pixel"),
+                ("CRVAL2", self.getDec().D,
+                 "coordinate system value at reference pixel"),
+                ("CTYPE1", 'RA---TAN', "name of the coordinate axis"),
+                ("CTYPE2", 'DEC--TAN', "name of the coordinate axis"),
+                ("CUNIT1", 'deg', "units of coordinate value"),
+                ("CUNIT2", 'deg', "units of coordinate value")] + self.getSensors()
+
         ra = None
         for i in range(len(baseHDR)):
             if baseHDR[i][0] == "RA":
@@ -1626,6 +1653,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
         for new in newHDR:
             baseHDR.append(new)
+
         return baseHDR
 
     #     return [('TELESCOP', self['model'], 'Telescope Model'),

@@ -234,12 +234,8 @@ class AstelcoDome(DomeBase):
 
         tpl = self.getTPL()
         ret = tpl.getobject('POSITION.INSTRUMENTAL.DOME[0].OFFSET')
-        if ret:
-            self._position = ret
-        elif not self._position:
-            self._position = 0.
 
-        return Coord.fromD(self._position)
+        return Coord.fromD(ret)
 
     def getMode(self):
 
