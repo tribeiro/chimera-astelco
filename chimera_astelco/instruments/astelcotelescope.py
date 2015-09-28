@@ -395,7 +395,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
     def addPM(self,name=""):
         tpl = self.getTPL()
-        cmdid = tpl.set('POINTING.MODEL.ADD',name,wait=True)
+        cmdid = tpl.set('POINTING.MODEL.ADD',name)
         cmd = tpl.getCmd(cmdid)
         return cmd.ok
 
@@ -809,10 +809,10 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         tpl = self.getTPL()
 
         if direction == Direction.W:
-            off = current_offset + offset / 3600. * np.cos(self.getDec().R)
+            off = current_offset - offset / 3600. * np.cos(self.getDec().R)
             cmdid = tpl.set('POSITION.INSTRUMENTAL.HA.OFFSET', off, wait=True)
         elif direction == Direction.E:
-            off = current_offset - offset / 3600. * np.cos(self.getDec().R)
+            off = current_offset + offset / 3600. * np.cos(self.getDec().R)
             cmdid = tpl.set('POSITION.INSTRUMENTAL.HA.OFFSET', off, wait=True)
         elif direction == Direction.N:
             cmdid = tpl.set('POSITION.INSTRUMENTAL.DEC.OFFSET', current_offset + offset / 3600., wait=True)

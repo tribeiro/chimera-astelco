@@ -80,7 +80,14 @@ class ChimeraAstelcoPointingModel(ChimeraCLI):
                                 long="overwrite",
                                 type=ParameterType.BOOLEAN,
                                 helpGroup="LOAD",
-                                help="Load and overwrite current list (default is load and append).)"))
+                                help="Load and overwrite current list (default is load and append).)"),
+                           dict(name="name",
+                                long="name",
+                                short="n",
+                                helpGroup="LOAD",
+                                default="",
+                                help="Name of current point.",
+                                metavar="FILENAME"))
         self.addHelpGroup("CALCULATE", "Calculate pointing model")
         self.addParameters(dict(name="mode",
                                 long="mode",
@@ -180,7 +187,7 @@ class ChimeraAstelcoPointingModel(ChimeraCLI):
     def add(self, options):
         telescope = self.telescope
         self.out(40 * "=")
-        status = telescope.add(options.name)
+        status = telescope.addPM(options.name)
         if status:
             self.out('Add pointing successed.')
         else:

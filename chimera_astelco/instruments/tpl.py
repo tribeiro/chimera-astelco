@@ -32,6 +32,7 @@ from chimera.core.constants import SYSTEM_CONFIG_DIRECTORY
 from chimera.core.exceptions import ChimeraException
 from chimera.util.enum import Enum
 
+import logging
 
 __all__ = ["TPLBase"]
 
@@ -92,12 +93,14 @@ class TPL(ChimeraObject):
         ChimeraObject.__init__(self)
 
         # debug log
-        self._debugLog = None
-        try:
-            self._debugLog = open(
-                os.path.join(SYSTEM_CONFIG_DIRECTORY, "tpl-debug.log"), "w")
-        except IOError, e:
-            self.log.warning("Could not create tpl debug file (%s)" % str(e))
+        # self._debugLog = None
+        # Todo: Move existing log to a different file
+        self._log_handler = logging.FileHandler(os.path.join(SYSTEM_CONFIG_DIRECTORY, "tpl.log"))
+        self._log_handler.setFormatter(logging.Formatter(fmt="%(message)s"))
+        self._log_handler.setLevel(logging.DEBUG)
+        self.log.addHandler(self._log_handler)
+        self.log.setLevel(logging.INFO)
+
 
         # Command counter
         self.next_command_id = 1
@@ -116,37 +119,37 @@ class TPL(ChimeraObject):
 
         self.setHz(self['freq'])
 
-        self.log.log(5,'tpl START')
+        self.log.debug('tpl START')
         self.open()
 
         return True
 
     def __stop__(self):
-        self.log.log(5,'tpl STOP')
+        self.log.debug('tpl STOP')
         self.close()
 
     @lock
     def control(self):
 
-        # self.log.log(5,'[control] entering...')
+        # self.log.debug('[control] entering...')
 
         # check if there is any incomplete command
         incomplete = np.any(np.array([not cmd.complete for cmd in self.commands_sent.values()]))
         if incomplete:
-            self.log.log(5,'[control] TPL has incomplete commands')
+            self.log.debug('[control] TPL has incomplete commands')
             for cmd in self.commands_sent.values():
                 if not cmd.complete:
-                    self.log.log(5,'[control] Command %i not complete'%cmd.id)
+                    self.log.debug('[control] Command %i not complete'%cmd.id)
         else:
             return True
 
         exp_recv = self.expect()
-        self.log.log(5,'[control] Received %i commands'%len(exp_recv))
+        self.log.debug('[control] Received %i commands'%len(exp_recv))
 
         for i in range(len(exp_recv)):
             recv = exp_recv[i]
 
-            self.log.log(5,recv[2])
+            self.log.debug(recv[2])
             cmdid = int(recv[1].group('CMDID'))
             if not cmdid in self.commands_sent.keys():
                 self.log.warning('Received a bad command id %i. Skipping'%cmdid)
@@ -183,14 +186,14 @@ class TPL(ChimeraObject):
         # Check size of commands and clear history
         while len(self.commands_sent) > int(self["history"]):
             self.last_cmd_deleted += 1
-            self.log.log(5,'[control] Cleaning command history. Deleting cmd with id: %i'%self.last_cmd_deleted)
+            self.log.debug('[control] Cleaning command history. Deleting cmd with id: %i'%self.last_cmd_deleted)
             self.commands_sent.pop(self.last_cmd_deleted)
 
-        # self.log.log(5,'[control] Received %i commands'%nrec)
+        # self.log.debug('[control] Received %i commands'%nrec)
         # for cmd in self.commands_sent.values():
         #     msg = '%s %s %s'%(cmd.id,cmd.status,cmd.allstatus)
-        #     self.log.log(5,msg)
-        self.log.log(5,'[control] Done')
+        #     self.log.debug(msg)
+        self.log.debug('[control] Done')
 
         return True
 
@@ -312,7 +315,7 @@ class TPL(ChimeraObject):
     def send(self, message='\r\n'):
 
         msg = '%s'%(message)
-        self.log.log(5, msg[:-1] )
+        self.log.debug( msg[:-1] )
 
         try:
             self.sock.write('%s'%message)

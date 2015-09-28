@@ -4,7 +4,7 @@ setup(
     name='chimera_astelco',
     version='0.0.1',
     packages=['chimera_astelco', 'chimera_astelco.instruments'],
-    scripts=['chimera-astelcopm'],
+    scripts=['scripts/chimera-astelcopm'],
     url='http://github.com/astroufsc/chimera_template',
     license='GPL v2',
     author='Tiago Ribeiro',
