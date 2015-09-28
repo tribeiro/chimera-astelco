@@ -25,7 +25,7 @@ import numpy as np
 import telnetlib
 from collections import defaultdict
 import re
-
+import shutil
 from chimera.core.chimeraobject import ChimeraObject
 from chimera.core.lock import lock
 from chimera.core.constants import SYSTEM_CONFIG_DIRECTORY
@@ -94,13 +94,18 @@ class TPL(ChimeraObject):
 
         # debug log
         # self._debugLog = None
-        # Todo: Move existing log to a different file
-        self._log_handler = logging.FileHandler(os.path.join(SYSTEM_CONFIG_DIRECTORY, "tpl.log"))
-        self._log_handler.setFormatter(logging.Formatter(fmt="%(message)s"))
-        self._log_handler.setLevel(logging.DEBUG)
-        self.log.addHandler(self._log_handler)
-        self.log.setLevel(logging.INFO)
+        self._debuglog = logging.getLogger('_tpldebug_')
+        logfile = os.path.join(SYSTEM_CONFIG_DIRECTORY, "tpl.log")
+        if os.path.exists(logfile):
+            shutil.move(logfile, os.path.join(SYSTEM_CONFIG_DIRECTORY,
+                                              "tpl.log_%s"%time.strftime("%Y%m%d-%H%M%S")))
 
+        _log_handler = logging.FileHandler(logfile)
+        _log_handler.setFormatter(logging.Formatter(fmt='%(asctime)s[%(levelname)s:%(threadName)s]-%(name)s-(%(filename)s:%(lineno)d):: %(message)s'))
+        # _log_handler.setLevel(logging.DEBUG)
+        self._debuglog.setLevel(logging.DEBUG)
+        self._debuglog.addHandler(_log_handler)
+        self.log.setLevel(logging.INFO)
 
         # Command counter
         self.next_command_id = 1
@@ -119,37 +124,37 @@ class TPL(ChimeraObject):
 
         self.setHz(self['freq'])
 
-        self.log.debug('tpl START')
+        self._debuglog.debug('tpl START')
         self.open()
 
         return True
 
     def __stop__(self):
-        self.log.debug('tpl STOP')
+        self._debuglog.debug('tpl STOP')
         self.close()
 
     @lock
     def control(self):
 
-        # self.log.debug('[control] entering...')
+        # self._debuglog.debug('[control] entering...')
 
         # check if there is any incomplete command
         incomplete = np.any(np.array([not cmd.complete for cmd in self.commands_sent.values()]))
         if incomplete:
-            self.log.debug('[control] TPL has incomplete commands')
+            self._debuglog.debug('[control] TPL has incomplete commands')
             for cmd in self.commands_sent.values():
                 if not cmd.complete:
-                    self.log.debug('[control] Command %i not complete'%cmd.id)
+                    self._debuglog.debug('[control] Command %i not complete'%cmd.id)
         else:
             return True
 
         exp_recv = self.expect()
-        self.log.debug('[control] Received %i commands'%len(exp_recv))
+        self._debuglog.debug('[control] Received %i commands'%len(exp_recv))
 
         for i in range(len(exp_recv)):
             recv = exp_recv[i]
 
-            self.log.debug(recv[2])
+            self._debuglog.debug(recv[2])
             cmdid = int(recv[1].group('CMDID'))
             if not cmdid in self.commands_sent.keys():
                 self.log.warning('Received a bad command id %i. Skipping'%cmdid)
@@ -186,14 +191,14 @@ class TPL(ChimeraObject):
         # Check size of commands and clear history
         while len(self.commands_sent) > int(self["history"]):
             self.last_cmd_deleted += 1
-            self.log.debug('[control] Cleaning command history. Deleting cmd with id: %i'%self.last_cmd_deleted)
+            self._debuglog.debug('[control] Cleaning command history. Deleting cmd with id: %i'%self.last_cmd_deleted)
             self.commands_sent.pop(self.last_cmd_deleted)
 
-        # self.log.debug('[control] Received %i commands'%nrec)
+        # self._debuglog.debug('[control] Received %i commands'%nrec)
         # for cmd in self.commands_sent.values():
         #     msg = '%s %s %s'%(cmd.id,cmd.status,cmd.allstatus)
-        #     self.log.debug(msg)
-        self.log.debug('[control] Done')
+        #     self._debuglog.debug(msg)
+        self._debuglog.debug('[control] Done')
 
         return True
 
@@ -315,7 +320,7 @@ class TPL(ChimeraObject):
     def send(self, message='\r\n'):
 
         msg = '%s'%(message)
-        self.log.debug( msg[:-1] )
+        self._debuglog.debug( msg[:-1] )
 
         try:
             self.sock.write('%s'%message)
