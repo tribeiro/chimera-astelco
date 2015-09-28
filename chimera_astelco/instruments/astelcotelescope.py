@@ -26,6 +26,7 @@ import datetime as dt
 import os
 
 import numpy as np
+from astropy.table import Table
 
 try:
     import cPickle as pickle
@@ -140,47 +141,6 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         #     self.abortSlew()
 
         return True
-
-    # -- ITelescope implementation
-
-    def _checkAstelco(self):  # converted to Astelco
-        align = self.getAlignMode()
-
-        if int(align) < 0:
-            raise AstelcoException(
-                "Couldn't find a Astelco telescope on '%s'." % self["device"])
-
-        return True
-
-    def _initTelescope(self):  # converted to Astelco
-        self.setAlignMode(self["align_mode"])
-
-        # set default slew rate
-        self.setSlewRate(self["slew_rate"])
-
-        try:
-            site = self.getManager().getProxy("/Site/0")
-
-            self.setLat(site["latitude"])
-            self.setLong(site["longitude"])
-            self.setLocalTime(dt.datetime.now().time())
-            self.setUTCOffset(site.utcoffset())
-            self.setDate(dt.date.today())
-        except ObjectNotFoundException:
-            self.log.warning("Cannot initialize telescope. "
-                             "Site object not available. Telescope"
-                             " attitude cannot be determined.")
-
-    # utilitaries
-    def getTPL(self):
-        try:
-            p = self.getManager().getProxy(self['tpl'], lazy=True)
-            if not p.ping():
-                return False
-            else:
-                return p
-        except ObjectNotFoundException:
-            return False
 
     @lock
     def open(self):  # converted to Astelco
@@ -302,6 +262,164 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         return True
 
     # --
+    # -- ITelescope implementation
+
+    def _checkAstelco(self):  # converted to Astelco
+        align = self.getAlignMode()
+
+        if int(align) < 0:
+            raise AstelcoException(
+                "Couldn't find a Astelco telescope on '%s'." % self["device"])
+
+        return True
+
+    def _initTelescope(self):  # converted to Astelco
+        self.setAlignMode(self["align_mode"])
+
+        # set default slew rate
+        self.setSlewRate(self["slew_rate"])
+
+        try:
+            site = self.getManager().getProxy("/Site/0")
+
+            self.setLat(site["latitude"])
+            self.setLong(site["longitude"])
+            self.setLocalTime(dt.datetime.now().time())
+            self.setUTCOffset(site.utcoffset())
+            self.setDate(dt.date.today())
+        except ObjectNotFoundException:
+            self.log.warning("Cannot initialize telescope. "
+                             "Site object not available. Telescope"
+                             " attitude cannot be determined.")
+
+    # utilitaries
+    def getTPL(self):
+        try:
+            p = self.getManager().getProxy(self['tpl'], lazy=True)
+            if not p.ping():
+                return False
+            else:
+                return p
+        except ObjectNotFoundException:
+            return False
+
+    def getPMFile(self):
+        '''
+        Get Pointing Model file
+        :return:
+        '''
+        return self.getTPL().getobject('POINTING.MODEL.FILE')
+
+    def getPMFileList(self):
+        '''
+        Get Pointing Model file
+        :return:
+        '''
+        flist = self.getTPL().getobject('POINTING.MODEL.FILE_LIST').split(',')
+        return flist
+
+    def getPMType(self):
+        '''
+        Get Pointing Model Type
+        :return:
+        '''
+
+        tpl = self.getTPL()
+        ptm_type = tpl.getobject('POINTING.MODEL.TYPE')
+        mtype = 'None' if ptm_type == 0 else 'NORMAL' if ptm_type == 1 else "EXTENDED"
+        return ptm_type,mtype
+
+    def setPMType(self,type):
+        '''
+        Set Pointing Model Type
+        :return:
+        '''
+
+        if type in [0,1,2]:
+            tpl = self.getTPL()
+            ptm_type = tpl.getobject('POINTING.MODEL.TYPE')
+            self['pointing_model_type'] = int(type)
+            tpl.set('POINTING.MODEL.TYPE',int(type))
+            return True
+        else:
+            return False
+
+    def getPMQuality(self):
+        '''
+        Get Pointing Model Quality
+        :return:
+        '''
+
+        return self.getTPL().getobject('POINTING.MODEL.CALCULATE')
+
+    def listPM(self):
+        'List of all measurements currently in memory.'
+        data = self.getTPL().getobject('POINTING.MODEL.LIST').split(';')
+
+        if len(data) == 1:
+            return []
+
+        data = [tuple(d.split(',')) for d in data]
+        tdata = Table(rows=data,
+                      names=('id','name','AZ','dAZ','ZD','dZD','ROT','dROT','DOMEAZ','dDOMEAZ'))
+        # dtype = [('id',np.int), ('name','S%i'%np.max([len(line[1]) for line in data])),
+        #          ('AZ',np.float),('dAZ',np.float),
+        #          ('ZD',np.float),('dZD',np.float),
+        #          ('ROT',np.float),('dROT',np.float),
+        #          ('DOME',np.float),('dDOME',np.float)]
+
+        return tdata
+
+    def calculatePM(self,mode=1):
+        if mode == 1 or mode == 2:
+            self.getTPL().set('POINTING.MODEL.CALCULATE',mode,wait=True)
+            return True
+        else:
+            raise AstelcoException('Mode is either 1 (calculate) or 2 (calculate and set offsets to zero).')
+
+
+    def loadPMFile(self,filename,overwrite):
+
+        flist = self.getPMFileList()
+        if filename not in flist:
+            return False
+        else:
+            tpl = self.getTPL()
+            self['pointing_model'] = filename
+            tpl.set('POINTING.MODEL.FILE',filename)
+            tpl.set('POINTING.MODEL.LOAD',1 if overwrite else 2)
+            return True
+
+    def clearPMList(self):
+        self.getTPL().set('POINTING.MODEL.CLEAR',1)
+
+    def addPM(self,name=""):
+        tpl = self.getTPL()
+        cmdid = tpl.set('POINTING.MODEL.ADD',name,wait=True)
+        cmd = tpl.getCmd(cmdid)
+        return cmd.ok
+
+    def getPSOrientation(self):
+        '''
+        Get Pointing Setup Orientation
+        :return:
+        '''
+        tpl = self.getTPL()
+        orient_id = tpl.getobject('POINTING.SETUP.ORIENTATION')
+        orient = 'NORMAL' if orient_id == 0 else 'REVERSE' if orient_id == 1 else 'AUTOMATIC'
+        return orient_id,orient
+
+    def getPSOptimization(self):
+        '''
+        Get Pointing Setup Optimization
+        :return:
+        '''
+        tpl = self.getTPL()
+        optim_id = tpl.getobject('POINTING.SETUP.OPTIMIZATION')
+        optim = 'NO OPTIMIZATION' if optim_id == 0 else 'MAX TRACKING TIME' if optim_id == 1 else "MIN SLEW TIME"
+
+        return optim_id,optim
+
 
     @lock
     def autoAlign(self):  # converted to Astelco

@@ -106,7 +106,7 @@ class TPL(ChimeraObject):
         # Store received objects
         self.commands_sent = {}
 
-        self._expect = [ '(?P<CMDID>\d+) DATA INLINE (?P<OBJECT>\S+)=(?P<VALUE>\S+)',
+        self._expect = [ '(?P<CMDID>\d+) DATA INLINE (?P<OBJECT>\S+)=(?P<VALUE>.+)',
                          '(?P<CMDID>\d+) DATA OK (?P<OBJECT>\S+)',
                          '(?P<CMDID>\d+) COMMAND (?P<STATUS>\S+)',
                          '(?P<CMDID>\d+) EVENT ERROR (?P<OBJECT>\S+):(?P<ENCM>(.*?)\s*)']

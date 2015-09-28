@@ -1,0 +1,200 @@
+#! /usr/bin/env python
+# -*- coding: iso-8859-1 -*-
+
+# chimera - observatory automation system
+# Copyright (C) 2006-2007  P. Henrique Silva <henrique@astro.ufsc.br>
+
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+# 02110-1301, USA.
+
+
+from chimera.core.cli import ChimeraCLI, action, ParameterType
+#from chimera.core.callback import callback
+#from chimera.core.exceptions import ChimeraException
+from chimera.core.compat import freeze_support
+
+from chimera.interfaces.pointverify import CantPointScopeException, CanSetScopeButNotThisField, CantSetScopeException, PointVerify
+from chimera.util.astrometrynet import NoSolutionAstrometryNetException
+#from chimera.util.sextractor import SExtractorException
+
+#from chimera.util.ds9 import DS9
+from chimera.util.astrometrynet import AstrometryNet
+
+import sys
+#import time
+#import os
+
+
+class ChimeraAstelcoPointingModel(ChimeraCLI):
+
+    def __init__(self):
+        '''
+        A chimera-script that implements the pointing model routine for astelco telescope. This is to be used particularly
+        for this types of telescopes as it uses non-standard routines implemented only on the role of astelco telescopes.
+        '''
+
+        ChimeraCLI.__init__(self, "chimera-astelcopm", "Astelco Point Model", 0.0)
+
+        self.addHelpGroup("TELESCOPE", "Telescope")
+        self.addInstrument(name="telescope",
+                           cls="Telescope",
+                           required=True,
+                           help="Telescope instrument to be used. If blank, try to guess from chimera.config",
+                           helpGroup="TELESCOPE")
+
+        self.addHelpGroup("PVERIFY", "PVerify")
+        self.addController(name="pverify",
+                           cls="PointVerify",
+                           required=False,
+                           helpGroup="PVERIFY",
+                           help="Pointing verification controller to be used")
+        self.addParameters(dict(name="pverify_file",
+                                long="fname",
+                                type="string",
+                                helpGroup="PVERIFY",
+                            help="Does astrometry on file",
+                            metavar="FILE"))
+
+        self.addParameters(dict(name="filename",
+                                long="file",
+                                short="f",
+                                helpGroup="",
+                                default="",
+                                help="Filename of the pointing model (check existing with --info).",
+                                metavar="FILENAME"))
+
+        self.addHelpGroup("LOAD", "Load configuration")
+        self.addParameters(dict(name="overwrite",
+                                long="overwrite",
+                                type=ParameterType.BOOLEAN,
+                                helpGroup="LOAD",
+                                help="Load and overwrite current list (default is load and append).)"))
+        self.addHelpGroup("CALCULATE", "Calculate pointing model")
+        self.addParameters(dict(name="mode",
+                                long="mode",
+                                type=ParameterType.CHOICE,
+                                choices=["calculate","reset"],
+                                helpGroup="CALCULATE",
+                                help="Calculates model coeficients. Reset will set all offsets to zero."),
+                           dict(name="type",
+                                long="type",
+                                type=ParameterType.CHOICE,
+                                choices=["classic","extended"],
+                                helpGroup="CALCULATE",
+                                help="Calculates model coeficients. Reset will set all offsets to zero."))
+    @action(help="Print information about current pointing model and exit")
+    def info(self, options):
+        telescope = self.telescope
+
+        self.out(40 * "=")
+
+        pmfile = telescope.getPMFile()
+        pmfilelist = telescope.getPMFileList()
+        pmtype_id,pmtype = telescope.getPMType()
+        quality = telescope.getPMQuality()
+        orient_id,orient = telescope.getPSOrientation()
+        optim_id,optim = telescope.getPSOptimization()
+
+        self.out('Pointing Model File: %s'%(pmfile))
+        self.out('Pointing Model Type: %s'%(pmtype))
+        self.out('Fit quality: %s'%quality)
+        self.out('Pointing Setup orientation: %s'%(orient))
+        self.out('Pointing Setup optimization: %s'%(optim))
+
+        self.out(40 * "=")
+
+        self.out('Available Pointing Model Files:')
+        for f in pmfilelist:
+            self.out('\t- %s'%(f))
+
+        self.out(40 * "=")
+
+    @action(help="List pointing model measurements")
+    def list(self, options):
+        telescope = self.telescope
+
+        self.out(40 * "=")
+        pts = telescope.listPM()
+
+        self.out('Current list has %i pointings.'%(len(pts)))
+
+        print pts
+        self.out(40 * "=")
+
+    @action(help="Load pointing model measurements from file.")
+    def load(self, options):
+        telescope = self.telescope
+
+        self.out(40 * "=")
+
+        pmfilelist = telescope.getPMFileList()
+        if options.filename in pmfilelist:
+            self.out("Loading pointing model file '%s'"%options.filename)
+            if options.overwrite:
+                self.out('Overwriting current list.')
+            else:
+                self.out('Appending measurements to current list.')
+
+            telescope.loadPMFile(options.filename,
+                                 options.overwrite)
+
+        else:
+            self.err("File '%s' not in file list."%options.filename)
+            self.out('Available Pointing Model Files:')
+            for f in pmfilelist:
+                self.out('\t- %s'%(f))
+
+        self.out(40 * "=")
+
+    @action(help="Clear pointing model measurements.")
+    def clear(self, options):
+        telescope = self.telescope
+        self.out(40 * "=")
+        self.out('Cleaning pointing model list.')
+        telescope.clearPMList()
+        self.out(40 * "=")
+
+    @action(help="Calculate pointing model.")
+    def calculate(self, options):
+        telescope = self.telescope
+        self.out(40 * "=")
+        typeId = lambda tp: 1 if tp == 'classic' else 2
+        self.out('Calculate pointing model %s in %s mode.'%(options.type,
+                                                            options.mode))
+        telescope.calculatePM(typeId(options.type))
+        self.out(40 * "=")
+
+    @action(help="Add current pointing to table.")
+    def add(self, options):
+        telescope = self.telescope
+        self.out(40 * "=")
+        status = telescope.add(options.name)
+        if status:
+            self.out('Add pointing successed.')
+        else:
+            self.out('Problem adding pointing to table.')
+        self.out(40 * "=")
+
+
+def main():
+    cli = ChimeraAstelcoPointingModel()
+    cli.run(sys.argv)
+    cli.wait()
+
+if __name__ == '__main__':
+    freeze_support()
+    main()
+
+
