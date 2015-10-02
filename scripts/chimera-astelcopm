@@ -101,6 +101,15 @@ class ChimeraAstelcoPointingModel(ChimeraCLI):
                                 choices=["classic","extended"],
                                 helpGroup="CALCULATE",
                                 help="Calculates model coeficients. Reset will set all offsets to zero."))
+
+        self.addHelpGroup("SETUP", "Setup pointing model")
+        self.addParameters(dict(name="orientation",
+                        long="orientation",
+                        type=ParameterType.CHOICE,
+                        choices=["normal","reverse","auto"],
+                        helpGroup="SETUP",
+                        help="Value for orientation. Options are normal, reverse or auto"))
+
     @action(help="Print information about current pointing model and exit")
     def info(self, options):
         telescope = self.telescope
@@ -192,6 +201,19 @@ class ChimeraAstelcoPointingModel(ChimeraCLI):
             self.out('Add pointing successed.')
         else:
             self.out('Problem adding pointing to table.')
+        self.out(40 * "=")
+
+    @action(help="Setup poiting model.")
+    def setup(self, options):
+        telescope = self.telescope
+        self.out(40 * "=")
+        if options.orientation:
+            or_id,or_name = telescope.getPSOrientation()
+            if or_name != options.orientation:
+                self.out('Changing orientation from %s to %s'%(or_name,options.orientation.upper()))
+                _baseOrient = {'normal':0,'reverse':1,'auto':2}
+                telescope.setPSOrientation(_baseOrient[options.orientation])
+        self.out('Done')
         self.out(40 * "=")
 
 

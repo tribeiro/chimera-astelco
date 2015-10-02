@@ -407,7 +407,20 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         tpl = self.getTPL()
         orient_id = tpl.getobject('POINTING.SETUP.ORIENTATION')
         orient = 'NORMAL' if orient_id == 0 else 'REVERSE' if orient_id == 1 else 'AUTOMATIC'
-        return orient_id,orient
+        return orient_id if orient_id in [0,1,2] else 2,orient
+
+    def setPSOrientation(self,orientation):
+        tpl = self.getTPL()
+        try:
+            orient = int(orientation)
+            # set to automatic if out of range
+            orient = orient if orient in [0,1,2] else 2
+            if orient != tpl.getobject('POINTING.SETUP.ORIENTATION'):
+                tpl.set('POINTING.SETUP.ORIENTATION',orient)
+                self['pointing_setup_orientation'] = orient
+        except Exception,e:
+            self.log.exception(e)
+            pass
 
     def getPSOptimization(self):
         '''
@@ -822,37 +835,39 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
             self._slewing = False
             return True
 
-        self.log.debug('Wait for telescope to stabilize...')
-        time.sleep(self["stabilization_time"])
-
-        self.log.debug('Wait cmd complete...')
-        start_time = time.time()
-        slew_time = self["stabilization_time"]
-        # status = self.waitCmd(cmdid, start_time, slew_time)
-
-        self.log.debug('SEND: POINTING.TRACK 1')
-        cmdid = tpl.set('POINTING.TRACK', 1, wait=False)
-        self.log.debug('PASSED')
-
         # self.log.debug('Wait for telescope to stabilize...')
         # time.sleep(self["stabilization_time"])
+        #
+        # self.log.debug('Wait cmd complete...')
+        # start_time = time.time()
+        # slew_time = self["stabilization_time"]
+        # # status = self.waitCmd(cmdid, start_time, slew_time)
+        #
+        # self.log.debug('SEND: POINTING.TRACK 1')
+        # cmdid = tpl.set('POINTING.TRACK', 1, wait=False)
+        # self.log.debug('PASSED')
+        #
+        # # self.log.debug('Wait for telescope to stabilize...')
+        # # time.sleep(self["stabilization_time"])
+        #
+        # self.log.debug('Wait cmd completion...')
+        # cmd = tpl.getCmd(cmdid)
+        #
+        # # time_sent = time.time()
+        # # while not cmd.complete:
+        # status = self._waitSlewLoop(cmdid,start_time,slew_time)
+        #     # cmd = tpl.getCmd(cmdid)
+        #
+        # # status = self.waitCmd(cmdid, start_time, slew_time)
+        # # self.log.debug('Done')
+        # self._slewing = False
+        #
+        # if status == TelescopeStatus.OK:
+        #     return True
+        # else:
+        #     return False
 
-        self.log.debug('Wait cmd completion...')
-        cmd = tpl.getCmd(cmdid)
-
-        # time_sent = time.time()
-        # while not cmd.complete:
-        status = self._waitSlewLoop(cmdid,start_time,slew_time)
-            # cmd = tpl.getCmd(cmdid)
-
-        # status = self.waitCmd(cmdid, start_time, slew_time)
-        # self.log.debug('Done')
-        self._slewing = False
-
-        if status == TelescopeStatus.OK:
-            return True
-        else:
-            return False
+        return True
 
     def _waitSlewLoop(self,cmdid,start_time,slew_time=None):
 
