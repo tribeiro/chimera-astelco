@@ -1161,6 +1161,17 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
         return self._alt
 
+    @lock
+    def getParallacticAngle(self):  # converted to Astelco
+        tpl = self.getTPL()
+        ret = tpl.getobject('POSITION.EQUATORIAL.PARALLACTIC_ANGLE')
+        if ret is not None:
+            ret = Coord.fromD(ret)
+        else:
+            ret = Coord.fromD(-1)
+
+        return ret
+
     def getTargetAlt(self):  # no need to convert to Astelco
         return self._target_alt
 

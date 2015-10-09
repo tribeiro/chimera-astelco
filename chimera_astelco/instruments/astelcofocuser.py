@@ -138,7 +138,7 @@ vector. Temperature compensation can also be performed.
 
         tpl = self.getTPL()
         self.log.debug('[control] %s' % tpl.getobject('SERVER.UPTIME'))
-        self._getRealPosition()
+        self.getRealPosition()
 
         return True
 
@@ -208,7 +208,7 @@ vector. Temperature compensation can also be performed.
         return self._position
 
     @lock
-    def _getRealPosition(self):
+    def getRealPosition(self):
         tpl = self.getTPL()
         if self['hexapod']:
             # pos = [0] * self['naxis']
@@ -235,7 +235,7 @@ vector. Temperature compensation can also be performed.
     @lock
     def getPosition(self):
 
-        return self._getRealPosition()[Axis.Z.index]
+        return self.getRealPosition()[Axis.Z.index]
 
 
     def getRange(self, axis='Z'):
@@ -317,7 +317,7 @@ vector. Temperature compensation can also be performed.
             #return -1
 
         # self._position[axis.index] = n
-        self._getRealPosition()
+        self.getRealPosition()
 
         return 0
 
@@ -344,7 +344,7 @@ vector. Temperature compensation can also be performed.
 
     def getMetadata(self, request):
         if self['hexapod']:
-            x, y, z, u, v = self._getRealPosition()
+            x, y, z, u, v = self.getRealPosition()
             dx, dy, dz, du, dv = self.getOffset()
             return [('FOCUSER', str(self['model']), 'Focuser Model'),
                     ('XHEX', x, 'Hexapod x position'),
@@ -361,7 +361,7 @@ vector. Temperature compensation can also be performed.
                     ('DVHEX', dv, 'Hexapod v angle offset')
                     ]
         else:
-            z = self._getRealPosition()
+            z = self.getRealPosition()
             return [('FOCUSER', str(self['model']), 'Focuser Model'),
                     ('FOCUS', z,
                      'Focuser position used for this observation')]
