@@ -24,7 +24,7 @@ import collections
 import threading
 
 from chimera.interfaces.focuser import (InvalidFocusPositionException,
-                                        FocuserFeature,HexapodAxis)
+                                        FocuserFeature,FocuserAxis)
 
 from chimera.instruments.focuser import FocuserBase
 
@@ -43,7 +43,7 @@ class AstelcoHexapodException(ChimeraException):
 
 
 Direction = Enum("IN", "OUT")
-Axis = HexapodAxis #Enum("X", "Y", "Z", "U", "V")  # For hexapod
+Axis = FocuserAxis #Enum("X", "Y", "Z", "U", "V")  # For hexapod
 
 FocusPosition = collections.namedtuple('Focus','X Y Z U V')
 
@@ -68,7 +68,11 @@ vector. Temperature compensation can also be performed.
         self._supports = {FocuserFeature.TEMPERATURE_COMPENSATION: False,
                           FocuserFeature.POSITION_FEEDBACK: True,
                           FocuserFeature.ENCODER: True,
-                          FocuserFeature.HEXAPOD: False}
+                          FocuserFeature.CONTROLLABLE_X : True,
+                          FocuserFeature.CONTROLLABLE_Y : True,
+                          FocuserFeature.CONTROLLABLE_U : True,
+                          FocuserFeature.CONTROLLABLE_V : True,
+                          FocuserFeature.CONTROLLABLE_W : False}
 
         self._position = [0.] * self['naxis']
         self._range = [None] * self['naxis']
@@ -95,7 +99,6 @@ vector. Temperature compensation can also be performed.
         tpl = self.getTPL()
         # range and step setting
         if self['hexapod']:
-            self._supports[FocuserFeature.HEXAPOD] = True
 
             for ax in Axis:
                 min = tpl.getobject('POSITION.INSTRUMENTAL.FOCUS[%i].REALPOS!MIN' % ax.index)
@@ -164,7 +167,7 @@ vector. Temperature compensation can also be performed.
         return True
 
     @lock
-    def moveIn(self, n, axis=HexapodAxis.Z):
+    def moveIn(self, n, axis=FocuserAxis.Z):
         ax = axis #self.getAxis(axis)
         target = self.getOffset()[ax.index] - n * self._step[ax.index]
 
@@ -177,7 +180,7 @@ vector. Temperature compensation can also be performed.
                                                 "boundaries." % target)
 
     @lock
-    def moveOut(self, n, axis=HexapodAxis.Z):
+    def moveOut(self, n, axis=FocuserAxis.Z):
         ax = axis # self.getAxis(axis)
 
         target = self.getOffset()[ax.index] + n * self._step[ax.index]
@@ -191,7 +194,7 @@ vector. Temperature compensation can also be performed.
                                                 "boundaries." % target)
 
     @lock
-    def moveTo(self, position, axis=HexapodAxis.Z):
+    def moveTo(self, position, axis=FocuserAxis.Z):
         ax = axis # self.getAxis(axis)
 
         self.log.debug('Setting offset on %s-axis to %f %s ...' % (ax, position * self._step[ax.index], self['unit']))
@@ -236,12 +239,12 @@ vector. Temperature compensation can also be performed.
 
 
     @lock
-    def getPosition(self, axis=HexapodAxis.Z):
+    def getPosition(self, axis=FocuserAxis.Z):
 
         return self.getTPL().getobject('POSITION.INSTRUMENTAL.FOCUS[%i].REALPOS' % axis.index)
 
 
-    def getRange(self, axis=HexapodAxis.Z):
+    def getRange(self, axis=FocuserAxis.Z):
         return self._range[axis.index]
 
     def _setPosition(self, n, axis=Axis.Z):
