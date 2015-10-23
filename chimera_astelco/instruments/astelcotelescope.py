@@ -41,8 +41,10 @@ from chimera.util.position import Position
 from chimera.util.enum import Enum
 
 from chimera.core.lock import lock
-from chimera.core.exceptions import ObjectNotFoundException, ChimeraException, ObjectTooLowException
+from chimera.core.exceptions import ObjectNotFoundException, ObjectTooLowException
 from chimera.core.constants import SYSTEM_CONFIG_DIRECTORY
+
+from astelcoexceptions import AstelcoException, AstelcoTelescopeException
 
 Direction = Enum("E", "W", "N", "S")
 AstelcoTelescopeStatus = Enum("NoLICENSE",
@@ -52,11 +54,6 @@ AstelcoTelescopeStatus = Enum("NoLICENSE",
                               "ERROR",
                               "WARNING",
                               "INFO")
-
-
-class AstelcoException(ChimeraException):
-    pass
-
 
 class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 

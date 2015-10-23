@@ -31,16 +31,10 @@ from chimera.instruments.dome import DomeBase
 from chimera.interfaces.dome import Mode
 
 from chimera.core.lock import lock
-from chimera.core.exceptions import ObjectNotFoundException,ChimeraException
+from chimera.core.exceptions import ObjectNotFoundException
 from chimera.core.constants import SYSTEM_CONFIG_DIRECTORY
 
-class AstelcoException(ChimeraException):
-    pass
-
-
-class AstelcoDomeException(ChimeraException):
-    pass
-
+from astelcoexceptions import AstelcoException, AstelcoDomeException
 
 class AstelcoDome(DomeBase):
     '''
