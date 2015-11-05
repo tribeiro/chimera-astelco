@@ -37,7 +37,7 @@ from chimera.instruments.telescope import TelescopeBase
 from chimera.interfaces.telescope import SlewRate, AlignMode, TelescopeStatus
 
 from chimera.util.coord import Coord
-from chimera.util.position import Position
+from chimera.util.position import Position, Epoch
 from chimera.util.enum import Enum
 
 from chimera.core.lock import lock
@@ -476,6 +476,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
         self.log.debug('Setting target RA/DEC')
         self.setTargetRaDec(position.ra, position.dec)
+        self.setTargetEpoch(position.epoch)
         self.log.debug('Done')
 
         status = TelescopeStatus.OK
@@ -1097,6 +1098,23 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
         if not ret:
             raise AstelcoException("Invalid DEC '%s'" % dec)
+
+        return True
+
+    @lock
+    def setTargetEpoch(self, epoch):  # converted to Astelco
+
+        if type(epoch) != type(Epoch.J2000):
+            self.log.warning("Given value is not a valid epoch. Using J2000.")
+            epoch = Epoch.J2000
+
+        tpl = self.getTPL()
+        cmdid = tpl.set('OBJECT.EQUATORIAL.EPOCH', float(epoch.epochString()[1:]), wait=True)
+
+        ret = tpl.succeeded(cmdid)
+
+        if not ret:
+            raise AstelcoException("Invalid EPOCH '%s'" % epoch)
 
         return True
 
