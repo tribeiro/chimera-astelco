@@ -58,7 +58,7 @@ AstelcoTelescopeStatus = Enum("NoLICENSE",
 class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
     __config__ = {'azimuth180Correct': False,
-                  'maxidletime': 90.,
+                  'maxidletime': 1.,
                   'parktimeout': 600.,
                   'sensors': 7,
                   'pointing_model': None,      # The filename of the pointing model. None is leave as is
@@ -132,13 +132,6 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
         return True
 
-    def __stop__(self):  # converted to Astelco
-
-        # if self.isSlewing():
-        #     self.abortSlew()
-
-        return True
-
     @lock
     def open(self):  # converted to Astelco
 
@@ -208,10 +201,10 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
             # tpl.set('POINTING.SETUP.ORIENTATION',2) # AUTOMATIC SELECTION
             # tpl.set('POINTING.SETUP.OPTIMIZATION',2) # MINIMIZE SLEW TIME
 
-            # self.getRa()
-            # self.getDec()
-            # self.getAlt()
-            # self.getAz()
+            self.getRa()
+            self.getDec()
+            self.getAlt()
+            self.getAz()
 
             return True
 
@@ -230,31 +223,34 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
         #self.log.debug('[control] %s'%self._tpl.getobject('SERVER.UPTIME'))
 
-        status = self.getTelescopeStatus()
-
-        if status == AstelcoTelescopeStatus.OK:
-            self.log.debug('[control] Status: %s' % status)
-            return True
-        elif status == AstelcoTelescopeStatus.WARNING or status == AstelcoTelescopeStatus.INFO:
-            self.log.info('[control] Got telescope status "%s", trying to acknowledge it... ' % status)
-            self.logStatus()
-            self.acknowledgeEvents()
-        elif status == AstelcoTelescopeStatus.PANIC or status == AstelcoTelescopeStatus.ERROR:
-            self.logStatus()
-            self.log.error('[control] Telescope in %s mode!' % status)
-            # What should be done? Try to acknowledge and if that fails do what?
-        else:
-            self.logStatus()
-            self.log.error('[control] Telescope in %s mode!' % status)
-            # return False
-
         # Update sensor and coordinate information
         self.updateSensors()
+        self.getRa()
+        self.getDec()
+        self.getAlt()
+        self.getAz()
 
-        # self.getRa()
-        # self.getDec()
-        # self.getAlt()
-        # self.getAz()
+        status = self.getTelescopeStatus()
+
+        try:
+            if status == AstelcoTelescopeStatus.OK:
+                self.log.debug('[control] Status: %s' % status)
+                return True
+            elif status == AstelcoTelescopeStatus.WARNING or status == AstelcoTelescopeStatus.INFO:
+                self.log.info('[control] Got telescope status "%s", trying to acknowledge it... ' % status)
+                self.logStatus()
+                self.acknowledgeEvents()
+            elif status == AstelcoTelescopeStatus.PANIC or status == AstelcoTelescopeStatus.ERROR:
+                self.logStatus()
+                self.log.error('[control] Telescope in %s mode!' % status)
+                # What should be done? Try to acknowledge and if that fails do what?
+            else:
+                self.logStatus()
+                self.log.error('[control] Telescope in %s mode!' % status)
+                # return False
+        except Exception, e:
+            self.log.exception(e)
+            pass
 
         return True
 
@@ -785,11 +781,8 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
     def _isSlewing(self):
 
         tpl = self.getTPL()
-        self.log.debug('GET TELESCOPE.MOTION_STATE')
         mstate = tpl.getobject('TELESCOPE.MOTION_STATE')
-        self.log.debug('GET POINTING.TRACK')
         ptrack = tpl.getobject('POINTING.TRACK')
-        self.log.debug('Done')
 
         self._slewing = (int(mstate) != 0) and (int(ptrack) != 1)
 
@@ -1003,35 +996,33 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         return True
 
     @lock
-    def _getRa(self):
+    def getRa(self):
         if not self._ra:
-            return self.getRa()
+            return self._getRa()
         return self._ra
 
     @lock
-    def _getDec(self):
+    def getDec(self):
         if not self._dec:
-            return self.getDec()
+            return self._getDec()
 
         return self._dec
 
     @lock
-    def getRa(self):  # converted to Astelco
+    def _getRa(self):  # converted to Astelco
 
         tpl = self.getTPL()
         ret = tpl.getobject('POSITION.EQUATORIAL.RA_J2000')
         if ret:
             self._ra = Coord.fromH(ret)
-        self.log.debug('Ra: %s' % ret)
         return self._ra
 
     @lock
-    def getDec(self):  # converted to Astelco
+    def _getDec(self):  # converted to Astelco
         tpl = self.getTPL()
         ret = tpl.getobject('POSITION.EQUATORIAL.DEC_J2000')
         if ret:
             self._dec = Coord.fromD(ret)
-        self.log.debug('Dec: %s' % ret)
         return self._dec
 
     @lock
@@ -1126,30 +1117,22 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         return Coord.fromD(ret)
 
     @lock
-    def _getAz(self):  # converted to Astelco
+    def getAz(self):  # converted to Astelco
 
         if not self._az:
-            return self.getAz()
+            return self._getAz()
 
-        c = self._az  #Coord.fromD(ret)
-
-        if self['azimuth180Correct']:
-            if c.toD() >= 180:
-                c = c - Coord.fromD(180)
-            else:
-                c = c + Coord.fromD(180)
-
-        return c
+        re = self._az
 
     @lock
-    def _getAlt(self):  # converted to Astelco
+    def getAlt(self):  # converted to Astelco
         if not self._alt:
-            return self.getAlt()
+            return self._getAlt()
 
         return self._alt
 
     @lock
-    def getAz(self):  # converted to Astelco
+    def _getAz(self):  # converted to Astelco
         tpl = self.getTPL()
         ret = tpl.getobject('POSITION.HORIZONTAL.AZ')
         if ret:
@@ -1167,7 +1150,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         return c
 
     @lock
-    def getAlt(self):  # converted to Astelco
+    def _getAlt(self):  # converted to Astelco
         tpl = self.getTPL()
         ret = tpl.getobject('POSITION.HORIZONTAL.ALT')
         if ret:
@@ -1246,7 +1229,6 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         except:
             pass
         return True
-
 
     @lock
     def getLat(self):  # converted to Astelco
