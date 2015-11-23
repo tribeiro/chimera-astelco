@@ -289,6 +289,7 @@ class AstelcoDome(DomeBase):
         if realpos == 1:
             return DomeStatus.OK
 
+        # Todo: Separate open flap from open slit
         self.log.warning('Slit opened! Opening Flap...')
 
         cmdid = tpl.set('AUXILIARY.DOME.TARGETPOS', 1, wait=False)

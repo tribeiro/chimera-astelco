@@ -234,7 +234,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
         try:
             if status == AstelcoTelescopeStatus.OK:
-                self.log.debug('[control] Status: %s' % status)
+                # self.log.debug('[control] Status: %s' % status)
                 return True
             elif status == AstelcoTelescopeStatus.WARNING or status == AstelcoTelescopeStatus.INFO:
                 self.log.info('[control] Got telescope status "%s", trying to acknowledge it... ' % status)
