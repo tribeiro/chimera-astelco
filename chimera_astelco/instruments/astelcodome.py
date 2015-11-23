@@ -28,7 +28,7 @@ from chimera.util.coord import Coord
 
 from chimera.interfaces.dome import DomeStatus
 from chimera.instruments.dome import DomeBase
-from chimera.interfaces.dome import Mode
+from chimera.interfaces.dome import Mode, InvalidDomePositionException
 
 from chimera.core.lock import lock
 from chimera.core.exceptions import ObjectNotFoundException
@@ -295,9 +295,12 @@ class AstelcoDome(DomeBase):
 
     def openFlap(self):
 
-        return DomeStatus.OK
+        if not self.isSlitOpen():
+            self.log.warning('Slit is closed. Cannot open Flap.')
+            raise InvalidDomePositionException("Cannot open dome flap with slit closed.")
 
-        cmdid = tpl.set('AUXILIARY.DOME.TARGETPOS', 1, wait=False)
+        tpl = self.getTPL()
+        cmdid = tpl.set('AUXILIARY.DOME.TARGETPOS', 4, wait=False)
         cmd = tpl.getCmd(cmdid)
 
         time_start = time.time()
@@ -325,6 +328,8 @@ class AstelcoDome(DomeBase):
         if not self.isSlitOpen():
             self.log.info('Slit already closed')
             return 0
+        elif self.isFlapOpen():
+            self.log.warning("Flap is open. Closing everything...")
 
         self.log.info("Closing slit")
 
@@ -365,15 +370,54 @@ class AstelcoDome(DomeBase):
 
         return DomeStatus.OK
 
+    @lock
+    def closeFlap(self):
+
+        # Todo: Implement Close Flap. Still needs to find a way to close the flap.
+        if not self.isFlapOpen():
+            self.log.info('Flap already closed')
+            return 0
+
+        tpl = self.getTPL()
+        cmdid = tpl.set('AUXILIARY.DOME.TARGETPOS', 4,wait=False)
+
+        time_start = time.time()
+
+        cmd = tpl.getCmd(cmdid)
+
+        self._abort.clear()
+
+        while not cmd.complete:
+
+            if self._abort.isSet():
+                return DomeStatus.ABORTED
+            elif time.time() > time_start + self._maxSlewTime:
+                return DomeStatus.TIMEOUT
+
+            cmd = tpl.getCmd(cmdid)
+
+        while self.isFlapOpen():
+
+            if self._abort.isSet():
+                return DomeStatus.ABORTED
+            elif time.time() > time_start + self._maxSlewTime:
+                return DomeStatus.TIMEOUT
+
+        return DomeStatus.OK
+
     def slitMoving(self):
         # Todo: Find command to check if slit is movng
         return False
 
     def isSlitOpen(self):
         tpl = self.getTPL()
-        self._slitPos = tpl.getobject('AUXILIARY.DOME.REALPOS')
-        self._slitOpen = self._slitPos > 0
-        return self._slitOpen
+        openmask = tpl.getobject('AUXILIARY.DOME.OPEN_MASK')
+        return (openmask & (1 << 1)) != 0
+
+    def isFlapOpen(self):
+        tpl = self.getTPL()
+        openmask = tpl.getobject('AUXILIARY.DOME.OPEN_MASK')
+        return (openmask & (1 << 2)) != 0
 
     # utilitaries
     def getTPL(self):
