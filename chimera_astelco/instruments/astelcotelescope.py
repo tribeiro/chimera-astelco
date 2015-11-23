@@ -1100,7 +1100,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
             epoch = Epoch.J2000
 
         tpl = self.getTPL()
-        cmdid = tpl.set('OBJECT.EQUATORIAL.EPOCH', float(epoch.epochString()[1:]), wait=True)
+        cmdid = tpl.set('OBJECT.EQUATORIAL.EPOCH', float(epoch.__str__()[1:]), wait=True)
 
         ret = tpl.succeeded(cmdid)
 
@@ -1119,10 +1119,10 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
     @lock
     def getAz(self):  # converted to Astelco
 
-        if not self._az:
+        if self._az is None:
             return self._getAz()
 
-        re = self._az
+        return self._az
 
     @lock
     def getAlt(self):  # converted to Astelco

@@ -118,8 +118,6 @@ vector. Temperature compensation can also be performed.
 
     def __start__(self):
 
-        self.open()
-
         tpl = self.getTPL()
         # range and step setting
         if self['hexapod']:
@@ -128,7 +126,7 @@ vector. Temperature compensation can also be performed.
                 self._supports[i] = True
                 self._position[ControllableAxis[i]] = None
                 self._offset[ControllableAxis[i]] = None
-                self._rangeControllableAxis[i] = [None, None]
+                self._range[i] = [None, None]
                 self._step[ControllableAxis[i]] = float(self[AxisStep[ControllableAxis[i]]])
 
             for ax in Axis:
