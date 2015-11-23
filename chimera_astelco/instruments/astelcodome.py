@@ -268,7 +268,7 @@ class AstelcoDome(DomeBase):
         self._abort.clear()
         tpl = self.getTPL()
 
-        cmdid = tpl.set('AUXILIARY.DOME.TARGETPOS', 1, wait=False)
+        cmdid = tpl.set('AUXILIARY.DOME.TARGETPOS', 2, wait=False)
 
         time_start = time.time()
 
@@ -284,12 +284,18 @@ class AstelcoDome(DomeBase):
             cmd = tpl.getCmd(cmdid)
 
 
-        realpos = tpl.getobject('AUXILIARY.DOME.REALPOS')
+        return DomeStatus.OK
 
-        if realpos == 1:
-            return DomeStatus.OK
+        # realpos = tpl.getobject('AUXILIARY.DOME.REALPOS')
+        #
+        # if realpos == 1:
+        #     return DomeStatus.OK
+        #
+        # self.log.warning('Slit opened! Opening Flap...')
 
-        self.log.warning('Slit opened! Opening Flap...')
+    def openFlap(self):
+
+        return DomeStatus.OK
 
         cmdid = tpl.set('AUXILIARY.DOME.TARGETPOS', 1, wait=False)
         cmd = tpl.getCmd(cmdid)
@@ -365,9 +371,10 @@ class AstelcoDome(DomeBase):
 
     def isSlitOpen(self):
         tpl = self.getTPL()
-        self._slitPos = tpl.getobject('AUXILIARY.DOME.REALPOS')
-        self._slitOpen = self._slitPos > 0
-        return self._slitOpen
+        openmask = tpl.getobject('AUXILIARY.DOME.OPEN_MASK')
+        return (openmask & (1 << 2)) != 0
+        #self._slitOpen = self._slitPos > 0
+        # return self._slitOpen
 
     # utilitaries
     def getTPL(self):
