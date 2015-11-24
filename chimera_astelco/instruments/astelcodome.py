@@ -431,6 +431,12 @@ class AstelcoDome(DomeBase):
             return False
 
     def getMetadata(self, request):
+        # Check first if there is metadata from an metadata override method.
+        md = self.getMetadataOverride(request)
+        if md is not None:
+            return md
+        # If not, just go on with the instrument's default metadata.
+
         baseHDR = super(DomeBase, self).getMetadata(request)
         newHDR = [("DOME_AZ",self.getAz().toDMS().__str__(),"Dome Azimuth"),
                   ("D_OFFSET",self.getAzOffset().toDMS().__str__(),"Dome Azimuth offset")]

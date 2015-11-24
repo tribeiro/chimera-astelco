@@ -223,6 +223,11 @@ vector. Temperature compensation can also be performed.
         return self._temperature
 
     def getMetadata(self, request):
+        # Check first if there is metadata from an metadata override method.
+        md = self.getMetadataOverride(request)
+        if md is not None:
+            return md
+        # If not, just go on with the instrument's default metadata.
 
         hdr_ = [('FOCUSER', str(self['model']), 'Focuser Model'),
                 ('FOCUS', self.getPosition(Axis.Z),'Focuser position used for this observation'),
