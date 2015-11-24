@@ -118,7 +118,7 @@ class AstelcoDome(DomeBase):
             caz = self.getAz()
 
             while self.isSlewing():
-                time.sleep(1.0)
+                # time.sleep(1.0)
                 if time.time() > (start_time + self._maxSlewTime):
                     self.log.warning('Dome syncronization timed-out...')
                     self.slewComplete(self.getAz(), DomeStatus.TIMEOUT)
