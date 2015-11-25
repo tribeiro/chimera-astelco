@@ -225,10 +225,6 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
         # Update sensor and coordinate information
         self.updateSensors()
-        self.getRa()
-        self.getDec()
-        self.getAlt()
-        self.getAz()
 
         status = self.getTelescopeStatus()
 
@@ -995,21 +991,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         tpl.set('TELESCOPE.STOP', 1, wait=True)
         return True
 
-    @lock
-    def getRa(self):
-        if not self._ra:
-            return self._getRa()
-        return self._ra
-
-    @lock
-    def getDec(self):
-        if not self._dec:
-            return self._getDec()
-
-        return self._dec
-
-    @lock
-    def _getRa(self):  # converted to Astelco
+    def getRa(self):  # converted to Astelco
 
         tpl = self.getTPL()
         ret = tpl.getobject('POSITION.EQUATORIAL.RA_J2000')
@@ -1017,8 +999,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
             self._ra = Coord.fromH(ret)
         return self._ra
 
-    @lock
-    def _getDec(self):  # converted to Astelco
+    def getDec(self):  # converted to Astelco
         tpl = self.getTPL()
         ret = tpl.getobject('POSITION.EQUATORIAL.DEC_J2000')
         if ret:
@@ -1116,29 +1097,11 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
         return Coord.fromD(ret)
 
-    @lock
     def getAz(self):  # converted to Astelco
-
-        if self._az is None:
-            return self._getAz()
-
-        return self._az
-
-    @lock
-    def getAlt(self):  # converted to Astelco
-        if not self._alt:
-            return self._getAlt()
-
-        return self._alt
-
-    @lock
-    def _getAz(self):  # converted to Astelco
         tpl = self.getTPL()
         ret = tpl.getobject('POSITION.HORIZONTAL.AZ')
         if ret:
             self._az = Coord.fromD(ret)
-        self.log.debug('Az: %s' % ret)
-
         c = self._az  #Coord.fromD(ret)
 
         if self['azimuth180Correct']:
@@ -1149,13 +1112,11 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
         return c
 
-    @lock
-    def _getAlt(self):  # converted to Astelco
+    def getAlt(self):  # converted to Astelco
         tpl = self.getTPL()
         ret = tpl.getobject('POSITION.HORIZONTAL.ALT')
         if ret:
             self._alt = Coord.fromD(ret)
-        self.log.debug('Alt: %s' % ret)
 
         return self._alt
 
