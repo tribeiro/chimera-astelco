@@ -179,18 +179,6 @@ class AstelcoDome(DomeBase):
         if self.getMode() == Mode.Track:
             self.log.warning('Dome is in track mode... Slew is completely controled by AsTelOS...')
 
-            start_time = time.time()
-            self._abort.clear()
-
-            while self.isSlewing():
-                # time.sleep(1.0)
-                if time.time() > (start_time + self._maxSlewTime):
-                    self.log.warning('Dome syncronization timed-out...')
-                    break
-                elif self._abort.isSet():
-                    self.log.warning('Dome syncronization aborted...')
-                    break
-
         self.log.debug('[sync] Sync dome with telescope')
         self.syncComplete()
 
