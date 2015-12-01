@@ -324,7 +324,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         :return:
         '''
 
-        if type in [0,1,2]:
+        if type in [-1,0,1]:
             tpl = self.getTPL()
             ptm_type = tpl.getobject('POINTING.MODEL.TYPE')
             self['pointing_model_type'] = int(type)
