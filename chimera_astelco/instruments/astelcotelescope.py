@@ -315,7 +315,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
         tpl = self.getTPL()
         ptm_type = tpl.getobject('POINTING.MODEL.TYPE')
-        mtype = 'None' if ptm_type == 0 else 'NORMAL' if ptm_type == 1 else "EXTENDED"
+        mtype = 'None' if ptm_type == -1 else 'NORMAL' if ptm_type == 0 else "EXTENDED"
         return ptm_type,mtype
 
     def setPMType(self,type):

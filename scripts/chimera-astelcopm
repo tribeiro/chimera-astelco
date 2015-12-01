@@ -190,7 +190,9 @@ class ChimeraAstelcoPointingModel(ChimeraCLI):
         modeId = lambda tp: 1 if tp == 'calculate' else 2
         self.out('Calculate pointing model %s in %s mode.'%(options.type,
                                                             options.mode))
+        self.out('Setting pointing model type to %s' % options.type)
         telescope.setPMType(typeId(options.type))
+        self.out('Calculating pointing model in %s mode' % options.mode)
         telescope.calculatePM(modeId(options.mode))
         self.out(40 * "=")
 
