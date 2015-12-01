@@ -328,7 +328,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
             tpl = self.getTPL()
             ptm_type = tpl.getobject('POINTING.MODEL.TYPE')
             self['pointing_model_type'] = int(type)
-            tpl.set('POINTING.MODEL.TYPE',int(type))
+            tpl.set('POINTING.MODEL.TYPE',int(type),wait=True)
             return True
         else:
             return False
@@ -375,8 +375,8 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         else:
             tpl = self.getTPL()
             self['pointing_model'] = filename
-            tpl.set('POINTING.MODEL.FILE',filename)
-            tpl.set('POINTING.MODEL.LOAD',1 if overwrite else 2)
+            tpl.set('POINTING.MODEL.FILE',filename, wait=True)
+            tpl.set('POINTING.MODEL.LOAD',1 if overwrite else 2, wait=True)
             return True
 
     def clearPMList(self):
@@ -405,7 +405,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
             # set to automatic if out of range
             orient = orient if orient in [0,1,2] else 2
             if orient != tpl.getobject('POINTING.SETUP.ORIENTATION'):
-                tpl.set('POINTING.SETUP.ORIENTATION',orient)
+                tpl.set('POINTING.SETUP.ORIENTATION',orient,wait=True)
                 self['pointing_setup_orientation'] = orient
         except Exception,e:
             self.log.exception(e)
@@ -502,6 +502,8 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         target = self.getTargetRaDec()
 
         status = self._waitSlew(time.time(), target, slew_time=slewTime)
+
+        return TelescopeStatus.OK
 
         if status == TelescopeStatus.OK:
             return self._startTracking(time.time(), target, slew_time=slewTime)
@@ -1120,7 +1122,6 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
         return self._alt
 
-    @lock
     def getParallacticAngle(self):  # converted to Astelco
         tpl = self.getTPL()
         ret = tpl.getobject('POSITION.EQUATORIAL.PARALLACTIC_ANGLE')

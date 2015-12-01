@@ -275,6 +275,7 @@ class AstelcoDome(DomeBase):
             self.log.info('Slit already opened...')
             return 0
 
+        # Todo: Do not open Slit if telescope is open.
         self._abort.clear()
         tpl = self.getTPL()
 
