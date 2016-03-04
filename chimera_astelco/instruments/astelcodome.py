@@ -279,6 +279,14 @@ class AstelcoDome(DomeBase):
         self._abort.clear()
         tpl = self.getTPL()
 
+        # Check if telescope is operational
+        state = tpl.getobject('TELESCOPE.READY_STATE')
+        if state != 1.0:
+            self.log.error('Telescope state is %f. Cannot open the dome. Try unparking the telescope or'
+                                       'solving any issues before opening the dome' % state)
+            raise AstelcoDomeException('Telescope state is %f. Cannot open the dome. Try unparking the telescope or'
+                                       'solving any issues before opening the dome' % state)
+
         cmdid = tpl.set('AUXILIARY.DOME.TARGETPOS', 2, wait=False)
 
         time_start = time.time()

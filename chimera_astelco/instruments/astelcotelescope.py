@@ -375,8 +375,11 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
             return False
         else:
             tpl = self.getTPL()
+
             self['pointing_model'] = filename
-            tpl.set('POINTING.MODEL.FILE',filename, wait=True)
+            self.log.debug('Setting pointing model file to %s' % filename)
+            tpl.set('POINTING.MODEL.FILE','"%s"' % filename, wait=True)
+            self.log.debug('Pointing model file is %s' % tpl.get('POINTING.MODEL.FILE'))
             tpl.set('POINTING.MODEL.LOAD',1 if overwrite else 2, wait=True)
             return True
 
@@ -503,8 +506,6 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
         target = self.getTargetRaDec()
 
         status = self._waitSlew(time.time(), target, slew_time=slewTime)
-
-        return TelescopeStatus.OK
 
         if status == TelescopeStatus.OK:
             return self._startTracking(time.time(), target, slew_time=slewTime)
@@ -642,7 +643,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
             if self._abort.isSet():
                 self._slewing = False
-                self.abortSlew()
+                # self.abortSlew()
                 self.slewComplete(self.getPositionRaDec(),
                     TelescopeStatus.ABORTED)
                 return TelescopeStatus.ABORTED
@@ -662,7 +663,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
                 angsep = target.angsep(position)
                 self.log.debug('Target: %s | Position: %s | Distance: %f' % (target, position, angsep.AS))
                 if angsep.AS < 60.:
-                    self.abortSlew()
+                    self._abort.set()
 
                 slew_time += slew_time
 
@@ -672,7 +673,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
             mstate = tpl.getobject('TELESCOPE.MOTION_STATE')
 
             self.log.debug('MSTATE: %i (%s) dec= %s ra=%s' % (mstate, bin(mstate),bin(dec_state),bin(ha_state)))
-            if (mstate & 1) == 0:
+            if not self._isSlewing():
                 self.log.debug('Slew finished...')
                 return TelescopeStatus.OK
 
@@ -706,14 +707,14 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
             if self._abort.isSet():
                 self._slewing = False
-                self.abortSlew()
+                # self.abortSlew()
                 self.slewComplete(self.getPositionRaDec(),
                     TelescopeStatus.ABORTED)
                 return TelescopeStatus.ABORTED
 
             # check timeout
             if time.time() >= (start_time + self["max_slew_time"]):
-                self.abortSlew()
+                # self.abortSlew()
                 self._slewing = False
                 self.log.error('Slew aborted. Max slew time reached.')
                 raise AstelcoException("Slew aborted. Max slew time reached.")
@@ -764,7 +765,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
     def abortSlew(self):  # converted to Astelco
         self.stopMoveAll()
-
+        self._abort.set()
 
         time.sleep(self["stabilization_time"])
 
@@ -781,9 +782,26 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
         tpl = self.getTPL()
         mstate = tpl.getobject('TELESCOPE.MOTION_STATE')
+        if int(mstate) == 0:
+            self._slewing = False
+            return False
+
+        mbitcode = [0, 1, 2, 3, 4]
+        MMESSG = ['One or more axes are moving',
+                  'Trajectories are being executed',
+                  'Movement is blocked (e.g. by limits)',
+                  'Movement is in sync with current target, i.e. tracking is accurate',
+                  'Movement is restricted by given jerk/acceleration/velocity limits']
+        for bit in mbitcode:
+            if ( mstate & (1 << bit) ) != 0:
+                self.log.debug(MMESSG[bit])
+
+        if ( mstate & (1 << mbitcode[2]) ) != 0:
+            raise AstelcoTelescopeException(MMESSG[2])
+
         ptrack = tpl.getobject('POINTING.TRACK')
 
-        self._slewing = (int(mstate) != 0) and (int(ptrack) != 1)
+        self._slewing = (int(ptrack) != 1)
 
         return self._slewing
 
@@ -868,14 +886,14 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
             if self._abort.isSet():
                 self._slewing = False
-                self.abortSlew()
+                # self.abortSlew()
                 self.slewComplete(self.getPositionRaDec(),
                     TelescopeStatus.ABORTED)
                 return TelescopeStatus.ABORTED
 
             # check timeout
             if time.time() >= (start_time + self["max_slew_time"]):
-                self.abortSlew()
+                # self.abortSlew()
                 self._slewing = False
                 self.log.error('Slew aborted. Max slew time reached.')
                 raise AstelcoException("Slew aborted. Max slew time reached.")
@@ -1388,7 +1406,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
             if ready_state != old_ready_state:
                 self.log.debug("Powering down Astelco: %s" % (ready_state))
                 old_ready_state = ready_state
-            if self._abort.set():
+            if self._abort.isSet():
                 # Send abork command to astelco
                 self.log.warning("Abort parking! This will leave the telescope in an intermediate state!")
                 tpl.set('ABORT', cmdid)
@@ -1401,8 +1419,6 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
                 self.logStatus()
                 self.acknowledgeEvents()
                 # What should I do if acknowledging events does not fix it?
-
-            time.sleep(5.0)
 
         # 2. stop tracking
         #self.stopTracking ()
@@ -1536,7 +1552,7 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
             if ready_state != old_ready_state:
                 self.log.debug("Powering up Astelco: %s" % (ready_state))
                 old_ready_state = ready_state
-            if self._abort.set():
+            if self._abort.isSet():
                 # Send abort command to astelco
                 self.log.warning("Aborting! This will leave the telescope in an intermediate state!")
                 tpl.set('ABORT', cmdid)
@@ -1564,8 +1580,6 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
                 someone there to check on the compressor. If that doesn't work, there may be a more serious problem with
                 the system.'''
                 raise AstelcoException(errmsg)
-
-            time.sleep(.1)
 
         # 3. set location, date and time
         self._initTelescope()
@@ -1595,13 +1609,14 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
         ready_state = 0.0
         while ready_state < 1.0:
-            self.log.debug("Opening telescope cover: %s" % (ready_state))
+            # self.log.debug("Opening telescope cover: %s" % (ready_state))
             #old_ready_state = ready_state
             ready_state = tpl.getobject('AUXILIARY.COVER.REALPOS')
             #if ready_state != old_ready_state:
             #    self.log.debug("Powering up Astelco: %s"%(ready_state))
             #    old_ready_state = ready_state
-            time.sleep(5.0)
+            # time.sleep(5.0)
+        self.log.debug("Telescope cover opened...")
 
         return tpl.succeeded(cmdid)
 
@@ -1612,17 +1627,15 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
         self.log.debug('Closing telescope cover...')
         tpl = self.getTPL()
-        cmdid = tpl.set('AUXILIARY.COVER.TARGETPOS', 0, wait=True)
+        cmdid = tpl.set('AUXILIARY.COVER.TARGETPOS', 0, wait=False)
 
         ready_state = 1.0
         while ready_state > 0.0:
-            self.log.debug("Closing telescope cover: %s" % (ready_state))
             #old_ready_state = ready_state
             ready_state = tpl.getobject('AUXILIARY.COVER.REALPOS')
             #if ready_state != old_ready_state:
             #    self.log.debug("Powering up Astelco: %s"%(ready_state))
             #    old_ready_state = ready_state
-            time.sleep(5.0)
 
         return True  #self._tpl.succeeded(cmdid)
 
