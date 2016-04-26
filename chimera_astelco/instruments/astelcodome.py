@@ -278,6 +278,9 @@ class AstelcoDome(DomeBase):
         # Todo: Do not open Slit if telescope is open.
         self._abort.clear()
         tpl = self.getTPL()
+        open = tpl.getobject('AUXILIARY.COVER.REALPOS') == 1
+        if open:
+            raise AstelcoDomeException('Cannot open Slit with telescope cover opened.')
 
         # Check if telescope is operational
         state = tpl.getobject('TELESCOPE.READY_STATE')
@@ -353,6 +356,9 @@ class AstelcoDome(DomeBase):
         self.log.info("Closing slit")
 
         tpl = self.getTPL()
+        open = tpl.getobject('AUXILIARY.COVER.REALPOS') == 1
+        if open:
+            raise AstelcoDomeException('Cannot close Slit with telescope cover opened.')
 
         realpos = tpl.getobject('AUXILIARY.DOME.REALPOS')
 

@@ -1324,6 +1324,9 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
     def startTracking(self):  # converted to Astelco
         tpl = self.getTPL()
         cmdid = tpl.set('POINTING.TRACK', 1, wait=True)
+        while not self.isTracking():
+            pass
+
         return tpl.succeeded(cmdid)
 
 
@@ -1336,7 +1339,9 @@ class AstelcoTelescope(TelescopeBase):  # converted to Astelco
 
     def isTracking(self):  # converted to Astelco
         tpl = self.getTPL()
-        return tpl.getobject('POINTING.TRACK')
+        trackbit = 3
+        motion_state = tpl.getobject('TELESCOPE.MOTION_STATE')
+        return (motion_state & (1<<trackbit) != 0)
 
 
     # -- ITelescopeSync implementation --
